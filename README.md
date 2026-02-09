@@ -57,3 +57,20 @@ bash setup-clipboard-indicator.sh
 - **Wayland**: ログアウト → ログイン
 
 `Super+V` でクリップボード履歴を表示。
+
+## allow-short-password.sh
+
+PAMのパスワードポリシーを緩和し、4桁の数字など短いパスワードを設定可能にするスクリプト。
+
+### やること
+
+1. `/etc/security/pwquality.conf` にminlen=4等の緩和設定を追記
+2. `/etc/pam.d/common-password` で `pam_pwquality.so` を無効化（最小6文字がハードコードされているため）
+3. `pam_unix.so` に `minlen=4` を設定し、`obscure` / `use_authtok` を除去
+
+### 使い方
+
+```bash
+sudo bash allow-short-password.sh
+passwd   # 4桁の数字パスワードを設定可能
+```
