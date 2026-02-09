@@ -20,11 +20,26 @@ set -euo pipefail
 
 BASHRC="$HOME/.bashrc"
 
-# --- Verify Claude Code is installed ---
+# --- Install Claude Code if not present ---
 if ! command -v claude &>/dev/null; then
-    echo "Error: Claude Code not found." >&2
-    echo "Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code" >&2
-    exit 1
+    echo "[INFO] Claude Code not found. Installing..."
+    curl -fsSL https://claude.ai/install.sh | bash
+
+    # Add ~/.local/bin to PATH if not already included
+    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+        export PATH="$HOME/.local/bin:$PATH"
+        if ! grep -qF '.local/bin' "$BASHRC" 2>/dev/null; then
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASHRC"
+            echo "[OK] Added ~/.local/bin to PATH in $BASHRC"
+        fi
+    fi
+
+    # Verify installation succeeded
+    if ! command -v claude &>/dev/null; then
+        echo "Error: Claude Code installation failed." >&2
+        exit 1
+    fi
+    echo "[OK] Claude Code installed successfully"
 fi
 
 # --- Add claudex function to .bashrc (idempotent) ---
