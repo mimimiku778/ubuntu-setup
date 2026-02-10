@@ -15,7 +15,7 @@
 #      - F11 Phone Link (KEY_LINK_PHONE) → F15
 #      - F12 Bookmarks (KEY_BOOKMARKS) → F17
 #   3. 以下のキーリマッピングを設定:
-#      - 左 Alt → 単独押しで無変換 (Muhenkan) / 他キーとの組み合わせで Alt / 500ms 長押しで Alt
+#      - 左 Alt → 単独押しで無変換 (Muhenkan) / 他キーとの組み合わせで Alt / 300ms 長押しで Alt
 #      - 右 Alt → 変換 (Henkan)
 #      - CapsLock → F13
 #      - Shift + CapsLock → CapsLock
@@ -130,7 +130,7 @@ cat > "$KEYD_CONF" << 'EOF'
 # Managed by setup-key-remap.sh
 # ThinkPad X1 Carbon Gen 13 キーリマッピング
 #
-# - 左 Alt     → 単独押しで無変換 (Muhenkan) / 他キーと組み合わせで Alt / 500ms 長押しで Alt
+# - 左 Alt     → 単独押しで無変換 (Muhenkan) / 他キーと組み合わせで Alt / 300ms 長押しで Alt
 # - 右 Alt     → 変換 (Henkan)
 # - CapsLock   → F13
 # - Shift + CapsLock → CapsLock
@@ -142,10 +142,10 @@ cat > "$KEYD_CONF" << 'EOF'
 
 [main]
 
-# 左 Alt: 単独押し → 無変換 / 他キーとの組み合わせ → Alt / 500ms 長押し → Alt
+# 左 Alt: 単独押し → 無変換 / 他キーとの組み合わせ → Alt / 300ms 長押し → Alt
 # overloadt2: 押下時は何も送信せず、他キーのタップで Alt 解決 (Alt リーク防止)
-# タイムアウト 500ms: 長押しで Alt として確定 (Alt 単体使用に対応)
-leftalt = overloadt2(alt, muhenkan, 500)
+# タイムアウト 300ms: 長押しで Alt として確定 (Alt 単体使用に対応)
+leftalt = overloadt2(alt, muhenkan, 300)
 
 # 右 Alt → 変換
 rightalt = henkan
@@ -179,7 +179,7 @@ fi
 # ─── 検証 ────────────────────────────────────────────────
 info "設定を検証中..."
 
-if [[ -f "$KEYD_CONF" ]] && grep -q "leftalt = overloadt2(alt, muhenkan, 500)" "$KEYD_CONF" \
+if [[ -f "$KEYD_CONF" ]] && grep -q "leftalt = overloadt2(alt, muhenkan, 300)" "$KEYD_CONF" \
     && grep -q "rightalt = henkan" "$KEYD_CONF" \
     && grep -q "capslock = f13" "$KEYD_CONF" \
     && grep -q "leftmeta+leftshift+f23 = leftalt" "$KEYD_CONF"; then
@@ -195,7 +195,7 @@ ok   "キーリマッピングのセットアップ完了!"
 info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 info "リマッピング内容:"
-info "  - 左 Alt     → 単独押しで無変換 / 他キーと組み合わせで Alt / 500ms 長押しで Alt"
+info "  - 左 Alt     → 単独押しで無変換 / 他キーと組み合わせで Alt / 300ms 長押しで Alt"
 info "  - 右 Alt     → 変換 (Henkan)"
 info "  - CapsLock   → F13"
 info "  - Shift+CapsLock → CapsLock"
