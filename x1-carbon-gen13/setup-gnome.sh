@@ -37,6 +37,10 @@ gsettings set org.gnome.desktop.wm.keybindings maximize-vertically "['<Super>f']
 gsettings set org.gnome.desktop.wm.keybindings minimize "['<Super>Down']"
 gsettings set org.gnome.desktop.wm.keybindings toggle-maximized "['<Super>Up']"
 
+# Alt+Tab でウィンドウ単位の切り替え (アプリ単位ではなく)
+gsettings set org.gnome.desktop.wm.keybindings switch-applications "['<Super>Tab']"
+gsettings set org.gnome.desktop.wm.keybindings switch-windows "['<Alt>Tab']"
+
 # メディアキー
 gsettings set org.gnome.settings-daemon.plugins.media-keys home "['<Super>e']"
 gsettings set org.gnome.settings-daemon.plugins.media-keys terminal "['<Super>t']"
@@ -55,6 +59,8 @@ echo "[INFO] Dock を設定中..."
 
 gsettings set org.gnome.shell.extensions.dash-to-dock dock-position "'BOTTOM'"
 gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed false
+gsettings set org.gnome.shell.extensions.dash-to-dock autohide true
+gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true
 gsettings set org.gnome.shell.extensions.dash-to-dock extend-height false
 gsettings set org.gnome.shell.extensions.dash-to-dock isolate-workspaces true
 gsettings set org.gnome.shell.extensions.dash-to-dock click-action "'focus-minimize-or-previews'"
