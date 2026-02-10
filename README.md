@@ -29,30 +29,6 @@ claudex                      # Claude Code起動（sudo パスワード不要）
 
 初回の`claudex`実行時にsudoパスワードを1回だけ入力する。以降Claude内のsudoはすべてパスワード不要になる。
 
-### setup-clipboard-indicator.sh
-
-GNOME拡張「Clipboard Indicator」をインストールし、トップバー中央に透明配置＋ショートカットキー専用運用にカスタマイズするスクリプト。
-
-#### やること
-
-1. **GNOME Extension Manager** がなければインストール
-2. **Clipboard Indicator** 拡張がなければ `gext` 経由でインストール（`pipx` も必要に応じて導入）
-3. `addToStatusArea` をパッチしてインジケーターを **トップバー中央（時計の左側）** に配置
-4. display-mode=3 (Neither) の挙動を `this.hide()` → **透明1px** に変更（メニューが出せるように）
-5. dconf設定を適用（`display-mode=3`, `Super+V` でトグル）
-
-#### 使い方
-
-```bash
-bash setup-clipboard-indicator.sh
-```
-
-実行後、GNOME Shellを再起動して反映:
-- **X11**: `Alt+F2` → `r` → Enter
-- **Wayland**: ログアウト → ログイン
-
-`Super+V` でクリップボード履歴を表示。
-
 ### setup-clipboard-history.sh
 
 GNOME拡張「Clipboard History」をインストールし、左右キーでの隣接メニュー移動をブロックするパッチを適用するスクリプト。
@@ -185,24 +161,40 @@ bash x1-carbon-gen13/fix-oled-flicker.sh status
 
 ### fix-chrome-gesture.sh
 
-Chrome のタッチパッド・タッチパネルでの二本指スワイプナビゲーション（戻る・進む）を修正するスクリプト。
+Chrome のタッチパッド・タッチパネルでのスワイプによるナビゲーション（戻る・進む）を修正するスクリプト。
+
+#### 問題
+
+- **トラックパッド**: 二本指左右スワイプでナビゲーションが反応しない
+- **タッチパネル**: ナビゲーション UI は出るが閾値がおかしく発動しない（Wayland + fractional scaling 環境での座標ズレ）
 
 #### やること
 
 `~/.local/share/applications/google-chrome.desktop` をオーバーライドし、Chrome 起動時に以下のフラグを付与:
 
-- `--enable-features=TouchpadOverscrollHistoryNavigation,WaylandFractionalScaleV1`
-- `--disable-features=WaylandPerSurfaceScale`
+| フラグ | 説明 |
+|---|---|
+| `--enable-features=TouchpadOverscrollHistoryNavigation` | トラックパッドの二本指スワイプナビ有効化 |
+| `--enable-features=WaylandFractionalScaleV1` | fractional scaling の座標処理を改善 |
+| `--disable-features=WaylandPerSurfaceScale` | fractional scaling でのタッチ座標ズレを修正 |
 
 #### 使い方
 
 ```bash
-bash x1-carbon-gen13/fix-chrome-gesture.sh           # フラグを設定
-bash x1-carbon-gen13/fix-chrome-gesture.sh status     # 現在の設定を確認
-bash x1-carbon-gen13/fix-chrome-gesture.sh revert     # 元に戻す
+# フラグを設定
+bash x1-carbon-gen13/fix-chrome-gesture.sh
+
+# 現在の設定を確認
+bash x1-carbon-gen13/fix-chrome-gesture.sh status
+
+# 元に戻す
+bash x1-carbon-gen13/fix-chrome-gesture.sh revert
 ```
 
-設定後、Chrome の全ウィンドウを閉じて再起動が必要。
+#### 注意
+
+- 設定後 Chrome の再起動が必要（すべてのウィンドウを閉じて再度開く）
+- Chrome のアップデート時にシステム `.desktop` が変わった場合は再実行が必要
 
 ### setup-brightness-restore.sh
 
@@ -235,17 +227,36 @@ sudo / polkit (GUI認証ダイアログ・ソフトウェアインストール) 
 sudo bash x1-carbon-gen13/setup-fingerprint-auth.sh
 ```
 
+### setup-gnome.sh
+
+GNOME デスクトップ環境の各種設定（デフォルトからの差分のみ）を適用するスクリプト。
+
+#### やること
+
+1. **gnome-tweaks** がなければインストール
+2. ショートカットキーの設定（`Super+Up` で最大化トグル、`Super+Down` で最小化、`Super+F` で縦最大化、`Super+E` でファイルマネージャ、`Super+T` でターミナル、メッセージトレイ無効化）
+3. Dock の設定（下側配置、自動非表示、現在のワークスペースのみ、クリックでフォーカス/最小化/プレビュー、アイコンサイズ52、背景不透明度80%、ゴミ箱・マウント非表示）
+4. インターフェースの設定（カーソルサイズ32、中クリック貼り付け無効化）
+5. デスクトップアイコンの設定（ホームフォルダ非表示）
+
+#### 使い方
+
+```bash
+bash x1-carbon-gen13/setup-gnome.sh
+```
+
 ### setup-key-remap.sh
 
 keyd を使用して Wayland / X11 両対応のキーリマッピングを設定するスクリプト。
 
 #### リマッピング内容
 
-| 変更前 | 変更後 |
-|---|---|
-| 右 Alt | 変換 (Henkan) |
-| CapsLock | 無変換 (Muhenkan) |
-| Copilot ボタン (Meta+Shift+F23) | CapsLock |
+| 変更前 | 変更後 | 備考 |
+|---|---|---|
+| 左 Alt (単独押し) | 無変換 (Muhenkan) | タップで無変換、ホールドで Alt |
+| 右 Alt | 変換 (Henkan) | |
+| CapsLock | F13 | Shift+CapsLock で CapsLock トグル |
+| Copilot ボタン (Meta+Shift+F23) | Alt | |
 
 #### 前提条件
 

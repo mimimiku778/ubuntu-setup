@@ -9,11 +9,18 @@
 #
 # What it does:
 #   1. keyd をインストール (未インストールの場合)
-#   2. 以下のキーリマッピングを設定:
+#   2. udev hwdb で ThinkPad Extra Buttons のキーをリマップ:
+#      - F7  Display Switch (KEY_SWITCHVIDEOMODE) → F16
+#      - F10 Snipping Tool (KEY_SELECTIVE_SCREENSHOT) → F14
+#      - F11 Phone Link (KEY_LINK_PHONE) → F15
+#      - F12 Bookmarks (KEY_BOOKMARKS) → F17
+#   3. 以下のキーリマッピングを設定:
+#      - 左 Alt → 単独押しで無変換 (Muhenkan) / 他キーとの組み合わせで Alt
 #      - 右 Alt → 変換 (Henkan)
-#      - CapsLock → 無変換 (Muhenkan)
-#      - Copilot ボタン (Meta+Shift+F23) → CapsLock
-#   3. keyd サービスを有効化・再起動
+#      - CapsLock → F13
+#      - Shift + CapsLock → CapsLock
+#      - Copilot ボタン (F23) → Alt
+#   4. keyd サービスを有効化・再起動
 #
 # Requirements:
 #   - root 権限 (sudo)
@@ -70,6 +77,35 @@ fi
 
 ok "keyd バイナリ: $KEYD_BIN"
 
+# ─── udev hwdb: ThinkPad Extra Buttons リマップ ──────────
+# GNOME が特殊扱いするキーや keyd が認識できない新しいキーコードを
+# F14-F17 にリマップする。
+HWDB_FILE="/etc/udev/hwdb.d/90-thinkpad-x1c-gen13.hwdb"
+HWDB_MARKER="# Managed by setup-key-remap.sh"
+
+if [[ -f "$HWDB_FILE" ]] && grep -qF "$HWDB_MARKER" "$HWDB_FILE"; then
+    skip "$HWDB_FILE は既に設定済み"
+else
+    info "udev hwdb ルールを作成中..."
+    mkdir -p /etc/udev/hwdb.d
+    cat > "$HWDB_FILE" << 'HWDB_EOF'
+# Managed by setup-key-remap.sh
+# ThinkPad X1 Carbon Gen 13 - keyd 未対応・GNOME 特殊扱いキーのリマップ
+# F7  Display Switch (KEY_SWITCHVIDEOMODE scan=0x06) -> F16
+# F10 Snipping Tool (KEY_SELECTIVE_SCREENSHOT scan=0x46) -> F14
+# F11 Phone Link (KEY_LINK_PHONE scan=0x1402) -> F15
+# F12 Bookmarks (KEY_BOOKMARKS scan=0x45) -> F17
+evdev:name:ThinkPad Extra Buttons:*
+ KEYBOARD_KEY_06=f16
+ KEYBOARD_KEY_46=f14
+ KEYBOARD_KEY_1402=f15
+ KEYBOARD_KEY_45=f17
+HWDB_EOF
+    systemd-hwdb update
+    udevadm trigger /dev/input/event*
+    ok "udev hwdb ルール作成・適用完了: $HWDB_FILE"
+fi
+
 # ─── 設定ディレクトリ確認 ─────────────────────────────────
 mkdir -p /etc/keyd
 
@@ -94,9 +130,11 @@ cat > "$KEYD_CONF" << 'EOF'
 # Managed by setup-key-remap.sh
 # ThinkPad X1 Carbon Gen 13 キーリマッピング
 #
+# - 左 Alt     → 単独押しで無変換 (Muhenkan) / 他キーと組み合わせで Alt
 # - 右 Alt     → 変換 (Henkan)
-# - CapsLock   → 無変換 (Muhenkan)
-# - Copilot    → CapsLock (Meta+Shift+F23 → CapsLock)
+# - CapsLock   → F13
+# - Shift + CapsLock → CapsLock
+# - Copilot    → Alt 修飾キー
 
 [ids]
 
@@ -104,14 +142,23 @@ cat > "$KEYD_CONF" << 'EOF'
 
 [main]
 
+# 左 Alt: 単独押し → 無変換 / 他キーとの組み合わせ → Alt
+leftalt = overload(alt, muhenkan)
+
 # 右 Alt → 変換
 rightalt = henkan
 
-# CapsLock → 無変換
-capslock = muhenkan
+# CapsLock → F13
+capslock = f13
 
-# Copilot ボタン (Meta+Shift+F23) → CapsLock
-leftmeta+leftshift+f23 = capslock
+# Copilot ボタン (Meta+Shift+F23) → Alt
+leftmeta+leftshift+f23 = leftalt
+
+[shift]
+
+# Shift + CapsLock → CapsLock (物理キー名で指定)
+capslock = capslock
+
 EOF
 
 ok "設定ファイル作成: $KEYD_CONF"
@@ -130,9 +177,10 @@ fi
 # ─── 検証 ────────────────────────────────────────────────
 info "設定を検証中..."
 
-if [[ -f "$KEYD_CONF" ]] && grep -q "rightalt = henkan" "$KEYD_CONF" \
-    && grep -q "capslock = muhenkan" "$KEYD_CONF" \
-    && grep -q "leftmeta+leftshift+f23 = capslock" "$KEYD_CONF"; then
+if [[ -f "$KEYD_CONF" ]] && grep -q "leftalt = overload(alt, muhenkan)" "$KEYD_CONF" \
+    && grep -q "rightalt = henkan" "$KEYD_CONF" \
+    && grep -q "capslock = f13" "$KEYD_CONF" \
+    && grep -q "leftmeta+leftshift+f23 = leftalt" "$KEYD_CONF"; then
     ok "設定ファイルの内容が正しいことを確認"
 else
     error "設定ファイルの内容が不正です"
@@ -145,9 +193,15 @@ ok   "キーリマッピングのセットアップ完了!"
 info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 info "リマッピング内容:"
+info "  - 左 Alt     → 単独押しで無変換 / 他キーと組み合わせで Alt"
 info "  - 右 Alt     → 変換 (Henkan)"
-info "  - CapsLock   → 無変換 (Muhenkan)"
-info "  - Copilot    → CapsLock"
+info "  - CapsLock   → F13"
+info "  - Shift+CapsLock → CapsLock"
+info "  - Copilot    → Alt"
+info "  - F7  Display Switch → F16 (hwdb)"
+info "  - F10 Snipping Tool → F14 (hwdb)"
+info "  - F11 Phone Link   → F15 (hwdb)"
+info "  - F12 Bookmarks    → F17 (hwdb)"
 echo ""
 info "即座に反映されます。再起動は不要です。"
 echo ""
