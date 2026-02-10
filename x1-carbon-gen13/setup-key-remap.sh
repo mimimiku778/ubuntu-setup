@@ -143,7 +143,9 @@ cat > "$KEYD_CONF" << 'EOF'
 [main]
 
 # 左 Alt: 単独押し → 無変換 / 他キーとの組み合わせ → Alt
-leftalt = overload(alt, muhenkan)
+# overloadt2: 押下時は何も送信せず、他キーのタップで Alt 解決 (Alt リーク防止)
+# タイムアウト 5000ms は安全弁 (実質キーイベントベースで解決)
+leftalt = overloadt2(alt, muhenkan, 5000)
 
 # 右 Alt → 変換
 rightalt = henkan
@@ -177,7 +179,7 @@ fi
 # ─── 検証 ────────────────────────────────────────────────
 info "設定を検証中..."
 
-if [[ -f "$KEYD_CONF" ]] && grep -q "leftalt = overload(alt, muhenkan)" "$KEYD_CONF" \
+if [[ -f "$KEYD_CONF" ]] && grep -q "leftalt = overloadt2(alt, muhenkan, 5000)" "$KEYD_CONF" \
     && grep -q "rightalt = henkan" "$KEYD_CONF" \
     && grep -q "capslock = f13" "$KEYD_CONF" \
     && grep -q "leftmeta+leftshift+f23 = leftalt" "$KEYD_CONF"; then
