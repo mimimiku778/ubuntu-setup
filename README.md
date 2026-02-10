@@ -91,6 +91,45 @@ LUKS解除画面（initramfs）のキーボードレイアウトをUSに変更�
 sudo bash fix-luks-keyboard.sh
 ```
 
+### setup-gnome-desktop.sh
+
+gnome-tweaks をインストールし、GNOME デスクトップの各種設定を行うスクリプト。
+
+#### やること
+
+1. **gnome-tweaks** をインストール（未インストールの場合）
+2. キーボードのリピート速度（repeat-interval=16ms）と長押し判定時間（delay=232ms）を設定
+
+#### 使い方
+
+```bash
+bash setup-gnome-desktop.sh
+```
+
+### setup-pointing-devices.sh
+
+マウス・トラックボール・タッチパッド・トラックポイントのポインター速度・加速度・スクロール速度を対話的に調整するウィザード。
+
+#### やること
+
+1. デバイス選択（マウス / タッチパッド / トラックポイント）
+2. ポインター速度・加速プロファイルをリアルタイムで試行→確定
+3. タッチパッド / トラックポイントのスクロール速度を libinput-config で調整
+4. `pointing-wizard` エイリアスを `~/.bashrc` に登録
+
+#### 対応環境
+
+- Ubuntu 24.04+ / GNOME / Wayland
+- ポインター調整: gsettings（即時反映）
+- スクロール調整: libinput-config（再ログインで反映）
+
+#### 使い方
+
+```bash
+bash setup-pointing-devices.sh   # 通常のウィザード
+pointing-wizard                  # エイリアス登録後
+```
+
 ### allow-short-password.sh
 
 PAMのパスワードポリシーを緩和し、4桁の数字など短いパスワードを設定可能にするスクリプト。
@@ -143,6 +182,27 @@ bash x1-carbon-gen13/fix-oled-flicker.sh status
 - PSR 無効化によりバッテリー消費が 0.5〜1.5W 程度増加する可能性がある
 - 変更の反映には再起動が必要
 - 実行時に `/etc/default/grub` のバックアップを自動作成する
+
+### fix-chrome-gesture.sh
+
+Chrome のタッチパッド・タッチパネルでの二本指スワイプナビゲーション（戻る・進む）を修正するスクリプト。
+
+#### やること
+
+`~/.local/share/applications/google-chrome.desktop` をオーバーライドし、Chrome 起動時に以下のフラグを付与:
+
+- `--enable-features=TouchpadOverscrollHistoryNavigation,WaylandFractionalScaleV1`
+- `--disable-features=WaylandPerSurfaceScale`
+
+#### 使い方
+
+```bash
+bash x1-carbon-gen13/fix-chrome-gesture.sh           # フラグを設定
+bash x1-carbon-gen13/fix-chrome-gesture.sh status     # 現在の設定を確認
+bash x1-carbon-gen13/fix-chrome-gesture.sh revert     # 元に戻す
+```
+
+設定後、Chrome の全ウィンドウを閉じて再起動が必要。
 
 ### setup-brightness-restore.sh
 
