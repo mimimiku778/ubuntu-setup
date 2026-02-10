@@ -84,12 +84,44 @@ export default class TilingThirdsExtension extends Extension {
                 () => this._tileWindow(name),
             );
         }
+
+        Main.wm.addKeybinding(
+            'restore-window',
+            this._settings,
+            Meta.KeyBindingFlags.NONE,
+            Shell.ActionMode.NORMAL,
+            () => this._restoreWindow(),
+        );
+
+        // Restore original size when user starts dragging a tiled window
+        this._grabBeginId = global.display.connect('grab-op-begin', (display, window, op) => {
+            if (op !== Meta.GrabOp.MOVING || !window?._tilingThirdsRect)
+                return;
+
+            const r = window._tilingThirdsRect;
+            const rect = window.get_frame_rect();
+
+            // Calculate pointer position ratio within the tiled window
+            const [pointerX] = global.get_pointer();
+            const ratioX = (pointerX - rect.x) / rect.width;
+
+            // Restore original size, keeping pointer at the same relative position
+            const newX = Math.round(pointerX - r.width * ratioX);
+            window.move_resize_frame(true, newX, r.y, r.width, r.height);
+            delete window._tilingThirdsRect;
+        });
     }
 
     _tileWindow(name) {
         const window = global.display.focus_window;
         if (!window || window.window_type !== Meta.WindowType.NORMAL)
             return;
+
+        // Save geometry before tiling
+        if (!window._tilingThirdsRect) {
+            const rect = window.get_frame_rect();
+            window._tilingThirdsRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        }
 
         if (window.maximized_horizontally || window.maximized_vertically)
             window.unmaximize(Meta.MaximizeFlags.BOTH);
@@ -110,8 +142,27 @@ export default class TilingThirdsExtension extends Extension {
         window.move_resize_frame(false, x, area.y, third, area.height);
     }
 
+    _restoreWindow() {
+        const window = global.display.focus_window;
+        if (!window || window.window_type !== Meta.WindowType.NORMAL)
+            return;
+
+        if (window._tilingThirdsRect) {
+            const r = window._tilingThirdsRect;
+            window.move_resize_frame(false, r.x, r.y, r.width, r.height);
+            delete window._tilingThirdsRect;
+        } else if (window.maximized_horizontally || window.maximized_vertically) {
+            window.unmaximize(Meta.MaximizeFlags.BOTH);
+        }
+    }
+
     disable() {
-        for (const name of ['tile-left-third', 'tile-center-third', 'tile-right-third'])
+        if (this._grabBeginId) {
+            global.display.disconnect(this._grabBeginId);
+            this._grabBeginId = 0;
+        }
+
+        for (const name of ['tile-left-third', 'tile-center-third', 'tile-right-third', 'restore-window'])
             Main.wm.removeKeybinding(name);
         this._settings = null;
     }
@@ -135,6 +186,10 @@ cat > "$SCHEMAS_DIR/org.gnome.shell.extensions.tiling-thirds.gschema.xml" << 'SC
     <key name="tile-right-third" type="as">
       <default><![CDATA[['<Super>Right']]]></default>
       <summary>Tile window to right third</summary>
+    </key>
+    <key name="restore-window" type="as">
+      <default><![CDATA[['<Super>Down']]]></default>
+      <summary>Restore window to pre-tiled size</summary>
     </key>
   </schema>
 </schemalist>
@@ -183,6 +238,8 @@ info "キーバインド:"
 info "  Super+Left  → 画面の左 1/3"
 info "  Super+Up    → 画面の中央 1/3"
 info "  Super+Right → 画面の右 1/3"
+info "  Super+Down  → 元のサイズに復元"
+info "  ドラッグ移動 → 自動で元のサイズに復元"
 echo ""
 info "反映するには GNOME Shell を再起動してください:"
 info "  X11:    Alt+F2 → r → Enter"

@@ -51,6 +51,12 @@ gsettings set org.gnome.shell.keybindings screenshot "['Print']"
 gsettings set org.gnome.shell.keybindings show-screenshot-ui "['Launch5']"
 gsettings set org.gnome.shell.keybindings show-screen-recording-ui "['<Alt>Launch5']"
 
+# Ubuntu Enhanced Tiling (tiling-assistant) の設定
+if gsettings list-schemas | grep -q org.gnome.shell.extensions.tiling-assistant; then
+    gsettings set org.gnome.shell.extensions.tiling-assistant enable-tiling-popup false
+    gsettings set org.gnome.shell.extensions.tiling-assistant disable-tile-groups false
+fi
+
 echo "[OK] ショートカットキーを設定"
 
 # --- 3. Dock の設定 ---
