@@ -50,8 +50,22 @@ echo "[INFO] ショートカットキーを設定中..."
 
 # ウィンドウ管理キーバインド
 gsettings set org.gnome.desktop.wm.keybindings maximize-vertically "['<Super>f']"
-gsettings set org.gnome.desktop.wm.keybindings minimize "['<Super>h']"
-gsettings set org.gnome.desktop.wm.keybindings toggle-maximized "['<Alt>F10']"
+gsettings set org.gnome.desktop.wm.keybindings minimize "['<Super>Down']"
+
+# Super+Left/Right/Up は tiling-thirds 拡張で 1/3 タイリングに使用するため解除
+gsettings set org.gnome.desktop.wm.keybindings toggle-maximized "[]"
+gsettings set org.gnome.desktop.wm.keybindings maximize "[]"
+gsettings set org.gnome.desktop.wm.keybindings unmaximize "[]"
+gsettings set org.gnome.mutter.keybindings toggle-tiled-left "[]" 2>/dev/null || true
+gsettings set org.gnome.mutter.keybindings toggle-tiled-right "[]" 2>/dev/null || true
+
+# Ubuntu Tiling Assistant の競合キーバインドを解除
+if gsettings list-schemas | grep -q org.gnome.shell.extensions.tiling-assistant; then
+    gsettings set org.gnome.shell.extensions.tiling-assistant tile-left-half "[]"
+    gsettings set org.gnome.shell.extensions.tiling-assistant tile-right-half "[]"
+    gsettings set org.gnome.shell.extensions.tiling-assistant tile-maximize "[]"
+    gsettings set org.gnome.shell.extensions.tiling-assistant restore-window "[]"
+fi
 
 # Alt+Tab でウィンドウ単位の切り替え (アプリ単位ではなく)
 gsettings set org.gnome.desktop.wm.keybindings switch-applications "['<Super>Tab']"
