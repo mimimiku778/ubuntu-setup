@@ -106,6 +106,38 @@ bash setup-pointing-devices.sh   # 通常のウィザード
 pointing-wizard                  # エイリアス登録後
 ```
 
+### setup-fcitx5.sh
+
+Fcitx5 + Mozc の日本語入力環境を構築し、どの状況でも変換/無変換キーで IME のオンオフを切り替え可能にするスクリプト。
+
+#### やること
+
+1. **fcitx5 / fcitx5-mozc** をインストール（未インストールの場合）
+2. **im-config** で fcitx5 をデフォルト入力メソッドに設定
+3. 物理キーボードレイアウトを自動検出して fcitx5 プロファイルを設定（例: US → `keyboard-us` + `mozc`）
+4. Fcitx5 ホットキー設定:
+   - ActivateKeys / DeactivateKeys を無効化
+   - ShareInputState を All に設定（全ウィンドウで IME 状態を共有）
+5. Mozc キーマップ設定:
+   - MS-IME ベース
+   - Henkan / Muhenkan エントリを削除
+   - 入力モード切替を削除（常にひらがなモード）
+6. GNOME カスタムキーボードショートカット:
+   - 変換 (Henkan) → `fcitx5-remote -o`（IME オン）
+   - 無変換 (Muhenkan) → `fcitx5-remote -c`（IME オフ）
+
+#### なぜ GNOME ショートカット経由か
+
+Fcitx5 のホットキーは入力コンテキスト（テキストフィールド）がある場合のみ動作する。GNOME カスタムショートカットはコンポジター（Mutter）レベルで処理されるため、デスクトップ上やテキストフィールド外でも IME の切り替えが可能になる。
+
+#### 使い方
+
+```bash
+bash setup-fcitx5.sh
+```
+
+im-config の変更はログアウト→ログインで反映される。
+
 ### allow-short-password.sh
 
 PAMのパスワードポリシーを緩和し、4桁の数字など短いパスワードを設定可能にするスクリプト。
