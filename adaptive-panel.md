@@ -47,6 +47,7 @@ bash setup-adaptive-panel.sh --uninstall # アンインストール
 | `showing` | `Main.overview` | Overview 表示開始 |
 | `hiding` | `Main.overview` | Overview 非表示開始 |
 | `hidden` | `Main.overview` | Overview 非表示完了 |
+| `notify::style` | `Main.panel` | 外部によるスタイルクリア検知・即時再適用 |
 | `notify::maximized-*` | 各ウィンドウ | 最大化/非最大化の変更 |
 | `size-changed` | 各ウィンドウ | ウィンドウサイズ変更 |
 | `unmanaging` | 各ウィンドウ | ウィンドウ破棄 |
@@ -70,13 +71,20 @@ re-pick で色が変化していれば自動的に反映される。generation �
 
 Overview の開閉時、pick_color に頼らずキャッシュ済みの色を即時復元することでちらつきを防ぐ。
 
+#### GNOME Shell の panel.style クリア問題
+
+GNOME Shell の `overview.js` は `_hideDone()` 内で `'hidden'` シグナルを発火した**後に** `Main.panel.style = null` を実行する。これにより拡張が `'hidden'` ハンドラで設定したインラインスタイルがクリアされ、Yaru テーマのデフォルト背景 (`#131313`) が一瞬表示される問題があった。
+
+**対策**: `Main.panel` の `notify::style` シグナルを監視し、`background-color` を含まないスタイルに変更された場合、`_currentBg` に保持した色を `transition-duration: 0ms` で即時再適用する。`_applyingStyle` ガードフラグで自身の `set_style()` 呼び出しによる無限ループを防止する。
+
 ```
 showing  → テーマ色を即時適用
 hiding   → overviewClosing フラグ ON + テーマ色を維持
-hidden   → キャッシュ済みウィンドウ色があれば即時復元 (pick_color なし)
+hidden   → キャッシュ済みウィンドウ色があれば即時復元、なければテーマ色
           → settling フラグ ON (500ms)
           → settling 期間中は restacked/focus 等による pick_color をブロック
           → 500ms 後に settling OFF → _updatePanel() で検証 pick
+notify::style → 外部によるスタイルクリアを検知 → _currentBg を 0ms で再適用
 ```
 
 `_lastWindowColor` に最後に pick_color で取得したウィンドウヘッダー色をキャッシュしておき、Overview 閉じ完了時にそのまま復元する。pick_color は描画安定後の検証のみに使い、目に見える色の遷移を最小化する。Overview 内でウィンドウを切り替えた場合はキャッシュが古い可能性があるが、500ms 後の検証 pick で正しい色に修正される。

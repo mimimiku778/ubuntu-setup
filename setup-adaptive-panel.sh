@@ -99,6 +99,8 @@ export default class AdaptivePanelExtension extends Extension {
         this._overviewClosing = false;
         this._settling = false;
         this._lastWindowColor = null;
+        this._currentBg = null;
+        this._applyingStyle = false;
 
         this._ifaceSettings = new Gio.Settings({
             schema_id: 'org.gnome.desktop.interface',
@@ -120,13 +122,27 @@ export default class AdaptivePanelExtension extends Extension {
             this._overviewClosing = true;
             this._applyThemeColor();
         });
+        // GNOME Shell's overview.js clears Main.panel.style after
+        // emitting 'hidden'; re-apply our color immediately when
+        // it is wiped so the Yaru default (#131313) never shows.
+        this._styleWatchId = Main.panel.connect('notify::style', () => {
+            if (this._applyingStyle || !this._currentBg) return;
+            const s = Main.panel.style;
+            if (!s || !s.includes('background-color')) {
+                const {r, g, b} = this._currentBg;
+                this._applyColor(r, g, b, true);
+            }
+        });
+
         this._connectTo(Main.overview, 'hidden', () => {
             this._overviewClosing = false;
-            // Immediately restore cached window color to avoid flicker
+            // Immediately restore target color
             const maxWin = this._findMaximizedWindow();
             if (maxWin && this._lastWindowColor) {
                 const {r, g, b} = this._lastWindowColor;
                 this._applyColor(r, g, b);
+            } else {
+                this._applyThemeColor();
             }
             // Block premature picks from restacked/focus signals,
             // then verify with actual pick_color after rendering settles
@@ -293,16 +309,20 @@ export default class AdaptivePanelExtension extends Extension {
             this._applyColor(0xFA, 0xFA, 0xFA);
     }
 
-    _applyColor(r, g, b) {
+    _applyColor(r, g, b, instant = false) {
+        this._currentBg = {r, g, b};
         const light = this._lum({r, g, b}) > 128;
         const fg = light ? '#3D3D3D' : '#f2f2f2';
+        const dur = instant ? '0ms' : '350ms';
 
         // Panel background + text color with smooth transition
+        this._applyingStyle = true;
         Main.panel.set_style(
             `background-color: rgb(${r},${g},${b}); ` +
             `color: ${fg}; ` +
-            `transition-duration: 350ms;`
+            `transition-duration: ${dur};`
         );
+        this._applyingStyle = false;
 
         // Toggle style class for hover/active styling in stylesheet.css
         if (light) {
@@ -333,6 +353,13 @@ export default class AdaptivePanelExtension extends Extension {
     }
 
     disable() {
+        // Disconnect style watcher BEFORE _resetStyle() to avoid re-apply
+        if (this._styleWatchId) {
+            Main.panel.disconnect(this._styleWatchId);
+            this._styleWatchId = 0;
+        }
+        this._currentBg = null;
+
         if (this._debounceId) {
             GLib.source_remove(this._debounceId);
             this._debounceId = 0;
