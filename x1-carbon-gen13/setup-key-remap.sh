@@ -17,7 +17,7 @@
 #   3. 以下のキーリマッピングを設定:
 #      - 左 Alt → 単独押しで無変換 (Muhenkan) / 他キーとの組み合わせで Alt / 300ms 長押しで Alt
 #      - 右 Alt → 変換 (Henkan)
-#      - CapsLock → F13
+#      - CapsLock → F18
 #      - Shift + CapsLock → CapsLock
 #      - Copilot ボタン (F23) → Alt
 #   4. keyd サービスを有効化・再起動
@@ -132,7 +132,7 @@ cat > "$KEYD_CONF" << 'EOF'
 #
 # - 左 Alt     → 単独押しで無変換 (Muhenkan) / 他キーと組み合わせで Alt / 300ms 長押しで Alt
 # - 右 Alt     → 変換 (Henkan)
-# - CapsLock   → F13
+# - CapsLock   → F18
 # - Shift + CapsLock → CapsLock
 # - Copilot    → Alt 修飾キー
 
@@ -140,18 +140,24 @@ cat > "$KEYD_CONF" << 'EOF'
 
 *
 
+[global]
+
+# overload のタップ判定タイムアウト (ms)
+# 300ms 以上押し続けた場合はタップアクション (muhenkan) を送出しない
+overload_tap_timeout = 300
+
 [main]
 
 # 左 Alt: 単独押し → 無変換 / 他キーとの組み合わせ → Alt / 300ms 長押し → Alt
-# overloadt2: 押下時は何も送信せず、他キーのタップで Alt 解決 (Alt リーク防止)
-# タイムアウト 300ms: 長押しで Alt として確定 (Alt 単体使用に対応)
-leftalt = overloadt2(alt, muhenkan, 300)
+# overload: キーダウン即座にaltレイヤー有効化。同時押しでも遅延なく Alt+key として動作。
+# 制約: タップ時に Alt キーコードが短時間漏れる (実害はほぼない)。
+leftalt = overload(alt, muhenkan)
 
 # 右 Alt → 変換
 rightalt = henkan
 
-# CapsLock → F13
-capslock = f13
+# CapsLock → F18
+capslock = f18
 
 # Copilot ボタン (Meta+Shift+F23) → Alt
 leftmeta+leftshift+f23 = leftalt
@@ -179,9 +185,9 @@ fi
 # ─── 検証 ────────────────────────────────────────────────
 info "設定を検証中..."
 
-if [[ -f "$KEYD_CONF" ]] && grep -q "leftalt = overloadt2(alt, muhenkan, 300)" "$KEYD_CONF" \
+if [[ -f "$KEYD_CONF" ]] && grep -q "leftalt = overload(alt, muhenkan)" "$KEYD_CONF" \
     && grep -q "rightalt = henkan" "$KEYD_CONF" \
-    && grep -q "capslock = f13" "$KEYD_CONF" \
+    && grep -q "capslock = f18" "$KEYD_CONF" \
     && grep -q "leftmeta+leftshift+f23 = leftalt" "$KEYD_CONF"; then
     ok "設定ファイルの内容が正しいことを確認"
 else
@@ -197,7 +203,7 @@ echo ""
 info "リマッピング内容:"
 info "  - 左 Alt     → 単独押しで無変換 / 他キーと組み合わせで Alt / 300ms 長押しで Alt"
 info "  - 右 Alt     → 変換 (Henkan)"
-info "  - CapsLock   → F13"
+info "  - CapsLock   → F18"
 info "  - Shift+CapsLock → CapsLock"
 info "  - Copilot    → Alt"
 info "  - F7  Display Switch → F16 (hwdb)"
