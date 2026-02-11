@@ -1,0 +1,6 @@
+[Unit]
+Description=Auto dark/light mode switch based on sunrise/sunset
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/repos/setup/auto-darkmode/darkmode-switch.py
