@@ -18,15 +18,21 @@ fi
 # --- hook script ---
 cat > "$HOOK_SCRIPT" << 'HOOK'
 #!/bin/bash
-# Claude Code notification hook - shows last assistant output in GNOME notification
+# Claude Code Stop hook - 応答完了時にGNOME通知+サウンドを送る
+
 input=$(cat)
 transcript=$(echo "$input" | jq -r '.transcript_path // empty')
+
+# Stop hook は transcript 最終書き込み前に発火するため少し待つ
+sleep 0.5
 
 body=""
 if [[ -n "$transcript" && -f "$transcript" ]]; then
   body=$(jq -rs '
-    [.[] | select(.type == "assistant")] | last
-    | .message.content // [] | map(select(.type == "text") | .text) | join(" ")
+    [.[] | select(.type == "assistant")
+     | .message.content // [] | map(select(.type == "text") | .text) | join(" ")
+     | select(length > 0)
+    ] | last
   ' "$transcript" 2>/dev/null \
     | tr '\n' ' ' \
     | sed 's/  */ /g' \
@@ -34,7 +40,7 @@ if [[ -n "$transcript" && -f "$transcript" ]]; then
 fi
 
 if [[ -z "$body" ]]; then
-  body=$(echo "$input" | jq -r '.message // "入力を待っています"')
+  body="入力を待っています"
 fi
 
 notify-send -i utilities-terminal "Claude Code" "$body" 2>/dev/null
@@ -50,7 +56,7 @@ chmod +x "$HOOK_SCRIPT"
 # --- settings.json (hook登録) ---
 hook_config='{
   "hooks": {
-    "Notification": [
+    "Stop": [
       {
         "matcher": "",
         "hooks": [
