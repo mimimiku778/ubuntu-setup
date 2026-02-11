@@ -43,6 +43,7 @@ FEATURES_CSV=$(IFS=,; echo "${FEATURE_FLAGS[*]}")
 
 DISABLE_FLAGS=(
     "WaylandPerSurfaceScale"
+    "PercentBasedScrolling"
 )
 DISABLE_CSV=$(IFS=,; echo "${DISABLE_FLAGS[*]}")
 
@@ -139,8 +140,22 @@ if [[ ! -f "$SYSTEM_DESKTOP" ]]; then
     error "Google Chrome がインストールされていません: $SYSTEM_DESKTOP"
 fi
 
-# ─── 既にフラグが設定済みか確認 ───────────────────────────
-if [[ -f "$USER_DESKTOP" ]] && grep -q "TouchpadOverscrollHistoryNavigation" "$USER_DESKTOP" && grep -q "WaylandPerSurfaceScale" "$USER_DESKTOP"; then
+# ─── 既にフラグが設定済みか確認（全Exec行をチェック） ────
+all_flags_present=true
+if [[ -f "$USER_DESKTOP" ]]; then
+    while IFS= read -r exec_line; do
+        for flag in "${FEATURE_FLAGS[@]}" "${DISABLE_FLAGS[@]}"; do
+            if [[ "$exec_line" != *"$flag"* ]]; then
+                all_flags_present=false
+                break 2
+            fi
+        done
+    done < <(grep "^Exec=" "$USER_DESKTOP")
+else
+    all_flags_present=false
+fi
+
+if [[ "$all_flags_present" == true ]]; then
     skip "フラグは既に設定済みです"
     show_status
     exit 0
