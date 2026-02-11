@@ -17,11 +17,12 @@
 #      - ShareInputState を All に設定 (全ウィンドウで IME 状態を共有)
 #   5. Mozc キーマップ設定:
 #      - MS-IME ベース
-#      - Henkan / Muhenkan エントリを削除
+#      - Henkan / Muhenkan / Hankaku/Zenkaku / Katakana / Hiragana / Eisu 削除
 #      - 入力モード切替を削除 (常にひらがなモード)
 #   6. GNOME カスタムキーボードショートカット:
 #      - 変換 (Henkan) → fcitx5-remote -o (IME オン)
 #      - 無変換 (Muhenkan) → fcitx5-remote -c (IME オフ)
+#      - JA 配列の場合: 半角/全角 → fcitx5-remote -t (IME トグル)
 #
 # Requirements:
 #   - GNOME デスクトップ環境
@@ -139,25 +140,28 @@ info "Fcitx5 ホットキーを設定中..."
 
 cat > "$HOME/.config/fcitx5/config" << 'EOF'
 [Hotkey]
+# 入力メソッドの切り替え
 TriggerKeys=
+# トリガーキーを押すたびに切り替える
 EnumerateWithTriggerKeys=True
+# 一時的に第1入力メソッドに切り替える
+AltTriggerKeys=
+# 次の入力メソッドに切り替える
 EnumerateForwardKeys=
+# 前の入力メソッドに切り替える
 EnumerateBackwardKeys=
+# 切り替え時は第1入力メソッドをスキップする
 EnumerateSkipFirst=False
+# 次の入力メソッドグループに切り替える
 EnumerateGroupForwardKeys=
+# 前の入力メソッドグループに切り替える
 EnumerateGroupBackwardKeys=
+# 入力メソッドを有効にする
+ActivateKeys=
+# 入力メソッドをオフにする
+DeactivateKeys=
+# 修飾キーのショートカットをトリガーするための時間制限（ミリ秒）
 ModifierOnlyKeyTimeout=250
-
-# AltTriggerKeys を無効化
-# Shift+Shift_L がデフォルトだと Ctrl+Shift+T 等の操作で
-# 誤発火して Mozc が直接入力モードに陥る原因になる
-[Hotkey/AltTriggerKeys]
-
-# ActivateKeys / DeactivateKeys は無効化
-# GNOME カスタムショートカット経由で fcitx5-remote を使用
-[Hotkey/ActivateKeys]
-
-[Hotkey/DeactivateKeys]
 
 [Hotkey/PrevPage]
 0=Up
@@ -175,23 +179,39 @@ ModifierOnlyKeyTimeout=250
 0=Control+Alt+P
 
 [Behavior]
+# デフォルトで有効にする
 ActiveByDefault=False
+# フォーカス時に状態をリセット
 resetStateWhenFocusIn=No
-# 全ウィンドウで IME 状態を共有
+# 入力状態を共有する
 ShareInputState=All
+# アプリケーションにプリエディットを表示する
 PreeditEnabledByDefault=True
+# 入力メソッドを切り替える際に入力メソッドの情報を表示する
 ShowInputMethodInformation=True
+# フォーカスを変更する際に入力メソッドの情報を表示する
 showInputMethodInformationWhenFocusIn=False
+# 入力メソッドの情報をコンパクトに表示する
 CompactInputMethodInformation=True
+# 第1入力メソッドの情報を表示する
 ShowFirstInputMethodInformation=True
+# デフォルトのページサイズ
 DefaultPageSize=5
+# XKB オプションより優先する
 OverrideXkbOption=False
+# カスタム XKB オプション
 CustomXkbOption=
+# Force Enabled Addons
 EnabledAddons=
+# Force Disabled Addons
 DisabledAddons=
+# Preload input method to be used by default
 PreloadInputMethod=True
+# パスワード欄に入力メソッドを許可する
 AllowInputMethodForPassword=False
+# パスワード入力時にプリエディットテキストを表示する
 ShowPreeditForPassword=False
+# ユーザーデータを保存する間隔（分）
 AutoSavePeriod=30
 EOF
 
@@ -220,7 +240,8 @@ CONFIG_DIR = os.path.expanduser("~/.config/mozc")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config1.db")
 
 # MS-IME ベースのキーマップ
-# - Henkan / Muhenkan エントリを削除
+# - Henkan / Muhenkan / Hankaku/Zenkaku / Katakana / Hiragana / Eisu エントリを削除
+#   (IME 切替は Fcitx5 + GNOME ショートカットで制御)
 # - 入力モード切替コマンドを削除 (常にひらがなモード):
 #   ToggleAlphanumericMode, SwitchKanaType,
 #   CompositionModeHiragana, CompositionModeFullKatakana,
@@ -266,9 +287,7 @@ KEYMAP_ENTRIES = [
     ("Composition", "F7", "ConvertToFullKatakana"),
     ("Composition", "F8", "ConvertToHalfWidth"),
     ("Composition", "F9", "ConvertToFullAlphanumeric"),
-    ("Composition", "Hankaku/Zenkaku", "IMEOff"),
     ("Composition", "Home", "MoveCursorToBeginning"),
-    ("Composition", "Kanji", "IMEOff"),
     ("Composition", "Left", "MoveCursorLeft"),
     ("Composition", "OFF", "IMEOff"),
     ("Composition", "ON", "IMEOn"),
@@ -316,16 +335,12 @@ KEYMAP_ENTRIES = [
     ("Conversion", "End", "SegmentFocusLast"),
     ("Conversion", "Enter", "Commit"),
     ("Conversion", "ESC", "Cancel"),
-    ("Conversion", "F1", "ReportBug"),
     ("Conversion", "F10", "ConvertToHalfAlphanumeric"),
-    ("Conversion", "F3", "ReportBug"),
     ("Conversion", "F6", "ConvertToHiragana"),
     ("Conversion", "F7", "ConvertToFullKatakana"),
     ("Conversion", "F8", "ConvertToHalfWidth"),
     ("Conversion", "F9", "ConvertToFullAlphanumeric"),
-    ("Conversion", "Hankaku/Zenkaku", "IMEOff"),
     ("Conversion", "Home", "SegmentFocusFirst"),
-    ("Conversion", "Kanji", "IMEOff"),
     ("Conversion", "Left", "SegmentFocusLeft"),
     ("Conversion", "OFF", "IMEOff"),
     ("Conversion", "ON", "IMEOn"),
@@ -347,20 +362,13 @@ KEYMAP_ENTRIES = [
     ("Conversion", "VirtualLeft", "SegmentWidthShrink"),
     ("Conversion", "VirtualRight", "SegmentWidthExpand"),
     # ── DirectInput ──
-    ("DirectInput", "Eisu", "IMEOn"),
     ("DirectInput", "F13", "IMEOn"),
-    ("DirectInput", "Hankaku/Zenkaku", "IMEOn"),
-    ("DirectInput", "Hiragana", "IMEOn"),
-    ("DirectInput", "Kanji", "IMEOn"),
-    ("DirectInput", "Katakana", "IMEOn"),
     ("DirectInput", "ON", "IMEOn"),
     # ── Precomposition ──
     ("Precomposition", "ASCII", "InsertCharacter"),
     ("Precomposition", "Backspace", "Revert"),
     ("Precomposition", "Ctrl Backspace", "Undo"),
     ("Precomposition", "Ctrl Shift Space", "InsertFullSpace"),
-    ("Precomposition", "Hankaku/Zenkaku", "IMEOff"),
-    ("Precomposition", "Kanji", "IMEOff"),
     ("Precomposition", "OFF", "IMEOff"),
     ("Precomposition", "ON", "IMEOn"),
     ("Precomposition", "Shift Space", "InsertAlternateSpace"),
@@ -480,6 +488,7 @@ BASE_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
 activate_path="${BASE_PATH}/ime-activate/"
 deactivate_path="${BASE_PATH}/ime-deactivate/"
 force_hiragana_path="${BASE_PATH}/ime-force-hiragana/"
+toggle_path="${BASE_PATH}/ime-toggle/"
 
 # 強制ひらがな復帰スクリプト作成
 # 変換キー長押し時 (keyd で Katakana に割当) に使用
@@ -505,7 +514,12 @@ existing=$(gsettings get "$SCHEMA" custom-keybindings)
 
 # 新しいリストを構築 (既存のバインディングを保持しつつ追加)
 new_list="$existing"
-for path in "$activate_path" "$deactivate_path" "$force_hiragana_path"; do
+paths=("$activate_path" "$deactivate_path" "$force_hiragana_path")
+if [[ "$KB_LAYOUT" == jp* ]]; then
+    paths+=("$toggle_path")
+fi
+
+for path in "${paths[@]}"; do
     if ! echo "$new_list" | grep -qF "$path"; then
         if [[ "$new_list" == "@as []" ]] || [[ "$new_list" == "[]" ]]; then
             new_list="['${path}']"
@@ -535,6 +549,14 @@ gsettings set "$CUSTOM_SCHEMA:$force_hiragana_path" command "$FORCE_HIRAGANA_SCR
 gsettings set "$CUSTOM_SCHEMA:$force_hiragana_path" binding 'Katakana'
 ok "Katakana → 強制ひらがな復帰"
 
+# JA 配列の場合: 半角/全角キーで IME トグル
+if [[ "$KB_LAYOUT" == jp* ]]; then
+    gsettings set "$CUSTOM_SCHEMA:$toggle_path" name 'IME トグル (半角/全角)'
+    gsettings set "$CUSTOM_SCHEMA:$toggle_path" command 'fcitx5-remote -t'
+    gsettings set "$CUSTOM_SCHEMA:$toggle_path" binding 'Zenkaku_Hankaku'
+    ok "半角/全角 (Zenkaku_Hankaku) → IME トグル"
+fi
+
 # ─── 7. Fcitx5 再起動 ────────────────────────────────────
 if $FCITX5_WAS_RUNNING || fcitx5-remote --check &>/dev/null; then
     info "Fcitx5 を再起動中..."
@@ -559,9 +581,12 @@ info ""
 info "IME 切り替え (GNOME ショートカット):"
 info "  変換 (Henkan)   → IME オン  (fcitx5-remote -o)"
 info "  無変換 (Muhenkan) → IME オフ (fcitx5-remote -c)"
+if [[ "$KB_LAYOUT" == jp* ]]; then
+    info "  半角/全角 (Zenkaku_Hankaku) → IME トグル (fcitx5-remote -t)"
+fi
 info ""
 info "Mozc キーマップ: MS-IME ベース"
-info "  - Henkan / Muhenkan エントリ削除済み"
+info "  - Henkan / Muhenkan / Hankaku/Zenkaku / Katakana / Hiragana / Eisu 削除済み"
 info "  - 入力モードは常にひらがな"
 info ""
 info "Fcitx5 設定:"
