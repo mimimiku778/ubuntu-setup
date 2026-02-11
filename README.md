@@ -82,30 +82,6 @@ gnome-tweaks をインストールし、GNOME デスクトップの各種設定�
 bash setup-gnome-desktop.sh
 ```
 
-### setup-pointing-devices.sh
-
-マウス・トラックボール・タッチパッド・トラックポイントのポインター速度・加速度・スクロール速度を対話的に調整するウィザード。
-
-#### やること
-
-1. デバイス選択（マウス / タッチパッド / トラックポイント）
-2. ポインター速度・加速プロファイルをリアルタイムで試行→確定
-3. タッチパッド / トラックポイントのスクロール速度を libinput-config で調整
-4. `pointing-wizard` エイリアスを `~/.bashrc` に登録
-
-#### 対応環境
-
-- Ubuntu 24.04+ / GNOME / Wayland
-- ポインター調整: gsettings（即時反映）
-- スクロール調整: libinput-config（再ログインで反映）
-
-#### 使い方
-
-```bash
-bash setup-pointing-devices.sh   # 通常のウィザード
-pointing-wizard                  # エイリアス登録後
-```
-
 ### setup-fcitx5.sh
 
 Fcitx5 + Mozc の日本語入力環境を構築し、どの状況でも変換/無変換キーで IME のオンオフを切り替え可能にするスクリプト。
@@ -116,15 +92,17 @@ Fcitx5 + Mozc の日本語入力環境を構築し、どの状況でも変換/�
 2. **im-config** で fcitx5 をデフォルト入力メソッドに設定
 3. 物理キーボードレイアウトを自動検出して fcitx5 プロファイルを設定（例: US → `keyboard-us` + `mozc`）
 4. Fcitx5 ホットキー設定:
-   - ActivateKeys / DeactivateKeys を無効化
+   - ActivateKeys / DeactivateKeys / AltTriggerKeys を無効化
    - ShareInputState を All に設定（全ウィンドウで IME 状態を共有）
 5. Mozc キーマップ設定:
    - MS-IME ベース
-   - Henkan / Muhenkan エントリを削除
+   - Henkan / Muhenkan / Hankaku/Zenkaku / Katakana / Hiragana / Eisu エントリを削除
    - 入力モード切替を削除（常にひらがなモード）
 6. GNOME カスタムキーボードショートカット:
    - 変換 (Henkan) → `fcitx5-remote -o`（IME オン）
    - 無変換 (Muhenkan) → `fcitx5-remote -c`（IME オフ）
+   - Katakana → 強制ひらがな復帰（mozc_server 再起動）
+   - JA 配列の場合: 半角/全角 (Zenkaku_Hankaku) → `fcitx5-remote -t`（IME トグル）
 
 #### なぜ GNOME ショートカット経由か
 
@@ -227,6 +205,68 @@ bash setup-tiling-edge-drag.sh
 
 `tiling-assistant` 拡張がインストール済みであること。
 
+### setup-adaptive-panel.sh
+
+OLED 焼付き防止: パネル色をダーク/ライトモード・最大化ウィンドウに応じて動的に変更する GNOME Shell 拡張をインストールするスクリプト。
+
+#### 機能
+
+- ライトモード時: 明るい背景 (#FAFAFA) + 暗い文字/アイコン
+- ダークモード時: 暗い背景 (#131313) + 明るい文字/アイコン
+- 最大化ウィンドウ時: ヘッダーバーの色にパネルを同期
+- 文字/アイコン色は背景の明暗で自動切替
+
+#### 使い方
+
+```bash
+# インストール
+bash setup-adaptive-panel.sh
+
+# アンインストール
+bash setup-adaptive-panel.sh --uninstall
+```
+
+GNOME Shell 49+ が必要。反映にはログアウト→ログインが必要。
+
+### setup-keyd-henkan-longpress.sh
+
+デスクトップキーボード用: 物理変換キーの長押しでフォーカス再サイクル（fcitx5-mozc の直接入力モード復帰）を行うスクリプト。
+
+#### やること
+
+1. **keyd** をインストール（未インストールの場合）
+2. `/usr/local/bin/keyd-refocus` スクリプトを作成
+3. `/etc/keyd/default.conf` に変換キーの timeout 設定を追加:
+   - 短押し → 変換 (Henkan)
+   - 300ms 長押し → Activities 開閉でフォーカス再サイクル
+4. keyd サービスを有効化・再起動
+
+#### 注意
+
+`x1-carbon-gen13/setup-key-remap.sh` とは排他。ThinkPad X1 Carbon Gen 13 では `setup-key-remap.sh` を使用すること。
+
+#### 使い方
+
+```bash
+sudo bash setup-keyd-henkan-longpress.sh
+```
+
+### setup-claude-code-notify.sh
+
+Claude Code の応答完了時に GNOME 通知とサウンドを送るフックを設定するスクリプト。
+
+#### やること
+
+1. `~/.claude/notify-hook.sh`（Stop フックスクリプト）を作成
+2. デフォルト通知音を `~/.claude/notify-sound.oga` にコピー（カスタム音に差し替え可能）
+3. `~/.claude/settings.json` にフック設定をマージ
+
+#### 使い方
+
+```bash
+bash setup-claude-code-notify.sh
+```
+
 ## RX 5600 XT 専用 (`rx5600xt/`)
 
 ### setup-amdgpu-stability.sh
@@ -314,6 +354,37 @@ bash x1-carbon-gen13/fix-chrome-gesture.sh revert
 - 設定後 Chrome の再起動が必要（すべてのウィンドウを閉じて再度開く）
 - Chrome のアップデート時にシステム `.desktop` が変わった場合は再実行が必要
 
+### fix-firefox-hw-accel.sh
+
+Snap 版 Firefox を Mozilla 公式 deb 版に置き換え、VA-API ハードウェアビデオデコードを有効にするスクリプト。
+
+#### 問題
+
+Snap 版 Firefox は内蔵の古い iHD ドライバを使用するため、Arrow Lake GPU で VA-API が動作せず、4K 動画が CPU ソフトデコードになりカクつく。Chrome は自前の HW デコードパスを持つため問題なし。
+
+#### やること
+
+1. `intel-media-va-driver-non-free` をインストール
+2. Snap 版 Firefox を削除
+3. Mozilla 公式 APT リポジトリを追加
+4. deb 版 Firefox をインストール
+5. `MOZ_DISABLE_RDD_SANDBOX=1` を `environment.d` に設定
+
+#### 使い方
+
+```bash
+# deb版に置き換え + VA-API有効化
+bash x1-carbon-gen13/fix-firefox-hw-accel.sh
+
+# 現在の設定を確認
+bash x1-carbon-gen13/fix-firefox-hw-accel.sh status
+
+# Snap版に戻す
+bash x1-carbon-gen13/fix-firefox-hw-accel.sh revert
+```
+
+設定後ログアウト/ログインが必要（environment.d の反映のため）。
+
 ### setup-brightness-restore.sh
 
 サスペンド/レジューム時に画面の明るさを保存・復元するスクリプト。
@@ -371,10 +442,19 @@ keyd を使用して Wayland / X11 両対応のキーリマッピングを設定
 
 | 変更前 | 変更後 | 備考 |
 |---|---|---|
-| 左 Alt (単独押し) | 無変換 (Muhenkan) | タップで無変換、ホールドで Alt |
-| 右 Alt | 変換 (Henkan) | |
-| CapsLock | F13 | Shift+CapsLock で CapsLock トグル |
+| 左 Alt (単独押し) | 無変換 (Muhenkan) | タップで無変換、ホールドで Alt、300ms 長押しで Alt |
+| 右 Alt (短押し) | 変換 (Henkan) | 300ms 長押しでフォーカス再サイクル (強制ひらがな復帰) |
+| CapsLock | F18 | Shift+CapsLock で CapsLock トグル |
 | Copilot ボタン (Meta+Shift+F23) | Alt | |
+
+#### udev hwdb リマッピング
+
+| 変更前 | 変更後 | 備考 |
+|---|---|---|
+| F7 Display Switch (KEY_SWITCHVIDEOMODE) | F16 | |
+| F10 Snipping Tool (KEY_SELECTIVE_SCREENSHOT) | F14 | |
+| F11 Phone Link (KEY_LINK_PHONE) | F15 | |
+| F12 Bookmarks (KEY_BOOKMARKS) | F17 | |
 
 #### 前提条件
 
@@ -385,3 +465,48 @@ keyd を使用して Wayland / X11 両対応のキーリマッピングを設定
 ```bash
 sudo bash x1-carbon-gen13/setup-key-remap.sh
 ```
+
+### after-setup-key-remap.sh
+
+`setup-key-remap.sh` 実行後に必要な追加設定を行うスクリプト。keyd 仮想キーボードを内蔵キーボードとして認識させる libinput quirks を作成し、DWT (disable-while-typing / 入力中にタッチパッド無効) を正常に機能させる。
+
+#### 背景
+
+keyd は物理キーボードのイベントを横取りし、仮想キーボードから再送信する。libinput はこの仮想キーボードを USB 外部デバイスと認識するため、DWT のペアリング対象から除外してしまう。quirks ファイルで `AttrKeyboardIntegration=internal` を指定して内蔵キーボードとして扱わせる。
+
+#### 使い方
+
+```bash
+sudo bash x1-carbon-gen13/after-setup-key-remap.sh
+```
+
+反映には再ログインが必要。
+
+### libscroll-speed/
+
+タッチパッドスクロール速度を非線形カーブ（Hill関数）で調整する LD_PRELOAD ライブラリ。
+
+#### 解決する問題
+
+1. X1 Gen 13 のスクロールが速すぎる（libinput の生値が大きく慣性スクロールが暴走）
+2. Chrome だけ他アプリより速い（Chrome は内部倍率が高い）
+3. 1を修正すると Chrome 以外が遅すぎる
+
+#### アーキテクチャ
+
+- `/etc/ld.so.preload` 経由で Mutter 内の `libinput_event_pointer_get_scroll_value()` をインターポーズ
+- Hill関数でスクロール値を変換
+- Mutter API で Chrome/Chromium/Electron のフォーカスを検出し `chrome-scroll-factor` を追加適用
+- 3秒ごとに `/etc/scroll-speed.conf` をホットリロード
+
+#### 使い方
+
+```bash
+# ビルド + インストール
+bash x1-carbon-gen13/libscroll-speed/setup.sh
+
+# アンインストール
+bash x1-carbon-gen13/libscroll-speed/uninstall.sh
+```
+
+詳細は [`x1-carbon-gen13/libscroll-speed/README.md`](x1-carbon-gen13/libscroll-speed/README.md) を参照。
