@@ -23,8 +23,8 @@ cat > "$HOOK_SCRIPT" << 'HOOK'
 input=$(cat)
 transcript=$(echo "$input" | jq -r '.transcript_path // empty')
 
-# Stop hook は transcript 最終書き込み前に発火するため少し待つ
-sleep 0.5
+# Stop hook は transcript 最終書き込み前に発火するため待つ
+sleep 1
 
 body=""
 if [[ -n "$transcript" && -f "$transcript" ]]; then
