@@ -96,6 +96,7 @@ export default class AdaptivePanelExtension extends Extension {
         this._followUpId2 = 0;
         this._settleId = 0;
         this._generation = 0;
+        this._pollId = 0;
         this._overviewClosing = false;
         this._settling = false;
         this._lastWindowColor = null;
@@ -161,6 +162,16 @@ export default class AdaptivePanelExtension extends Extension {
             this._trackWindow(a.meta_window);
 
         this._scheduleUpdate();
+
+        // Periodic background poll (every 5s) to catch late color
+        // changes (e.g. slow-starting apps like VSCode).
+        // _updatePanel() already guards against overview/settling.
+        this._pollId = GLib.timeout_add(GLib.PRIORITY_DEFAULT_IDLE, 5000, () => {
+            if (!this._settling && !Main.overview.visible &&
+                !this._overviewClosing && this._findMaximizedWindow())
+                this._updatePanel();
+            return GLib.SOURCE_CONTINUE;
+        });
     }
 
     _connectTo(obj, signal, handler) {
@@ -375,6 +386,10 @@ export default class AdaptivePanelExtension extends Extension {
         if (this._settleId) {
             GLib.source_remove(this._settleId);
             this._settleId = 0;
+        }
+        if (this._pollId) {
+            GLib.source_remove(this._pollId);
+            this._pollId = 0;
         }
 
         this._resetStyle();
