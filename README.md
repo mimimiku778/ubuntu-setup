@@ -155,6 +155,92 @@ sudo bash allow-short-password.sh
 passwd   # 4桁の数字パスワードを設定可能
 ```
 
+### setup-auto-darkmode.sh
+
+日の出・日没に基づいて GNOME のダークモード/ライトモードを自動切替する systemd ユーザータイマーをセットアップするスクリプト。
+
+#### 仕組み
+
+- 緯度経度から日の出・日没時刻を Python 標準ライブラリ（外部依存なし）で天文計算
+- systemd ユーザータイマーが 5 分ごとにチェックし、`gsettings` で `color-scheme` を切替
+- 位置情報は初回セットアップ時に IP ジオロケーション API で自動取得（確認あり）、`~/.config/auto-darkmode/location.conf` に保存
+- 以降はオフラインで動作
+
+#### ファイル構成
+
+| ファイル | 役割 |
+|---|---|
+| `setup-auto-darkmode.sh` | セットアップ / アンインストール |
+| `auto-darkmode/darkmode-switch.py` | 日の出/日没計算 + テーマ切替 |
+| `auto-darkmode/auto-darkmode.service` | systemd ユーザーサービス |
+| `auto-darkmode/auto-darkmode.timer` | 5 分間隔のタイマー |
+
+#### 使い方
+
+```bash
+# インストール（位置情報設定 → タイマー登録 → 初回実行）
+bash setup-auto-darkmode.sh
+
+# アンインストール（タイマー停止・削除、位置情報は保持）
+bash setup-auto-darkmode.sh --uninstall
+
+# 手動で即時実行
+python3 auto-darkmode/darkmode-switch.py
+
+# タイマー状態確認
+systemctl --user status auto-darkmode.timer
+
+# 位置情報の変更
+vi ~/.config/auto-darkmode/location.conf
+```
+
+### setup-tiling-thirds.sh
+
+`Super+Left/Up/Right` でウィンドウを画面の 1/3 にタイル配置するカスタム GNOME Shell 拡張をインストールするスクリプト。
+
+#### キーバインド
+
+| キー | 動作 |
+|---|---|
+| `Super+Left` | 左 1/3 |
+| `Super+Up` | 中央 1/3 |
+| `Super+Right` | 右 1/3 |
+| `Super+Down` | 元のサイズに復元 |
+
+#### 使い方
+
+```bash
+bash setup-tiling-thirds.sh
+```
+
+GNOME Shell 45+ が必要。Wayland ではログアウト→ログインで反映。
+
+### setup-tiling-edge-drag.sh
+
+GNOME Tiling Assistant 拡張で左右エッジドラッグのみを有効にし、上下エッジのスナップを無効化するスクリプト。
+
+#### 使い方
+
+```bash
+bash setup-tiling-edge-drag.sh
+```
+
+`tiling-assistant` 拡張がインストール済みであること。
+
+## RX 5600 XT 専用 (`rx5600xt/`)
+
+### setup-amdgpu-stability.sh
+
+RX 5600 XT (RDNA1/Navi 10) GPU で発生する `ring gfx_0.0.0 timeout` エラーを修正するスクリプト。GRUB のカーネルパラメータに `amdgpu.ppfeaturemask=0xffffffff` を追加する。
+
+#### 使い方
+
+```bash
+sudo bash rx5600xt/setup-amdgpu-stability.sh
+```
+
+反映には再起動が必要。
+
 ## X1 Carbon Gen 13 専用 (`x1-carbon-gen13/`)
 
 ThinkPad X1 Carbon Gen 13 (OLED) 向けのセットアップスクリプト。
