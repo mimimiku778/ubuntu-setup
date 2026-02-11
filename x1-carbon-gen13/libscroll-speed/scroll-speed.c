@@ -32,20 +32,26 @@ const char *libscroll_speed_version(void) { return "1.0.0"; }
 
 /* Base sensitivity for slow/precise scrolling (0.0–1.0+).
  * macOS feels like ~0.5–0.6 for trackpad finger scrolling. */
-static double cfg_base_speed = 0.55;
+static double cfg_base_speed = 0.57;
 
 /* Soft speed cap (in scroll-value units).
- * Deltas above this are progressively squashed via tanh.
+ * At d = cap the output is 50% of max.
  * Effective max output ≈ base_speed × scroll_cap.         */
-static double cfg_scroll_cap = 12.0;
+static double cfg_scroll_cap = 14.0;
 
 /* Linear factor for discrete mouse wheel (1.0 = unchanged). */
 static double cfg_discrete_factor = 1.0;
 
-/* Ramp softness exponent (1.0 = linear start, >1 = gentler initial ramp).
- * Higher values suppress small-delta output while preserving max speed.
- * Useful for taming kinetic/inertial scrolling in browsers.           */
-static double cfg_ramp_softness = 2.2;
+/* Ramp softness exponent (1.0 = linear start, >1 = gentler curve).
+ * Controls the main Hill curve steepness.  Lower values give a more
+ * gradual mid-range; high values compress the transition band.      */
+static double cfg_ramp_softness = 2.0;
+
+/* Low-cut threshold (delta units, 0 = disabled).
+ * When > 0, deltas below this are suppressed by a steep (n=4) Hill
+ * filter, independently of the main curve.  Useful for taming
+ * kinetic/inertial scroll tails.                                   */
+static double cfg_low_cut = 0.0;
 
 /* ── Internal state ───────────────────────────────────────── */
 
@@ -107,6 +113,8 @@ static void load_config(void)
             cfg_discrete_factor = v;
         else if (strcmp(key, "ramp-softness") == 0)
             cfg_ramp_softness = v;
+        else if (strcmp(key, "low-cut") == 0)
+            cfg_low_cut = v;
     }
     fclose(f);
 }
@@ -134,24 +142,21 @@ static void init(void)
 
 /* ── Non-linear transform (Hill function) ─────────────────── *
  *
- * f(delta) = sign(d) × base_speed × cap × x / (1 + x)
- *   where x = (|d| / cap) ^ softness
+ * f(delta) = sign(d) × max × hill(d) × lowcut(d)
  *
- * Properties:
- *   - At d = cap: output = 50% of max (= base_speed × cap / 2)
- *   - softness=1 → linear start
- *   - softness>1 → suppresses small deltas (inertial tail)
- *   - Approaches max gradually (unlike tanh which saturates abruptly)
+ *   hill(d) = x / (1 + x),  x = (|d| / cap) ^ softness
+ *   lowcut(d) = d⁴ / (t⁴ + d⁴)   [only when low-cut > 0]
+ *   max = base_speed × cap
  *
- * Example with base_speed=0.80, cap=10, softness=3.0:
- *   delta= 1 → 0.008 (0.8%)  — inertial tail, nearly silent
- *   delta= 2 → 0.063 (3%)    — inertial, strongly suppressed
- *   delta= 5 → 0.89  (18%)   — slow scroll, preserved
- *   delta=10 → 4.00  (40%)   — medium: gradual mid-range
- *   delta=15 → 6.17  (41%)   — medium-fast, still climbing
- *   delta=20 → 7.11  (36%)   — fast, approaching cap
- *   delta=30 → 7.71  (26%)   — very fast
- *   maximum  → 8.00          — absolute ceiling (= base_speed × cap)
+ * Example with base_speed=0.57, cap=14, softness=2.0:
+ *   delta= 1 → 0.041 (0.5%)  — precise scroll, responsive
+ *   delta= 2 → 0.160 (2%)    — slow scroll
+ *   delta= 5 → 0.903 (11%)   — slow-medium
+ *   delta=10 → 2.70  (34%)   — medium, gradual
+ *   delta=15 → 4.24  (53%)   — medium-fast
+ *   delta=20 → 5.35  (67%)   — fast
+ *   delta=30 → 6.56  (82%)   — very fast
+ *   maximum  → 7.98          — ceiling (= base_speed × cap)
  */
 static double transform_finger(double delta)
 {
@@ -166,8 +171,19 @@ static double transform_finger(double delta)
     if (cfg_ramp_softness != 1.0 && normalized > 0.0)
         normalized = pow(normalized, cfg_ramp_softness);
 
-    /* Hill function: x/(1+x) — gradual saturation unlike tanh */
-    return sign * cfg_base_speed * cfg_scroll_cap * (normalized / (1.0 + normalized));
+    /* Hill function: x/(1+x) — gradual saturation */
+    double out = cfg_base_speed * cfg_scroll_cap * (normalized / (1.0 + normalized));
+
+    /* Optional low-cut filter: suppress deltas below threshold */
+    if (cfg_low_cut > 0.0) {
+        double d2 = abs_d * abs_d;
+        double d4 = d2 * d2;
+        double t2 = cfg_low_cut * cfg_low_cut;
+        double t4 = t2 * t2;
+        out *= d4 / (t4 + d4);
+    }
+
+    return sign * out;
 }
 
 /* ── Intercepted API ──────────────────────────────────────── */
