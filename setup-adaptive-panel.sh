@@ -92,7 +92,12 @@ export default class AdaptivePanelExtension extends Extension {
         this._signals = [];
         this._windowSignals = new Map();
         this._debounceId = 0;
+        this._followUpId = 0;
+        this._followUpId2 = 0;
+        this._settleId = 0;
         this._generation = 0;
+        this._overviewClosing = false;
+        this._settling = false;
 
         this._ifaceSettings = new Gio.Settings({
             schema_id: 'org.gnome.desktop.interface',
@@ -104,12 +109,28 @@ export default class AdaptivePanelExtension extends Extension {
             () => this._onFocusChanged());
         this._connectTo(global.display, 'window-created',
             (_d, w) => this._trackWindow(w));
+        this._connectTo(global.display, 'restacked',
+            () => this._scheduleUpdate());
         this._connectTo(global.workspace_manager, 'active-workspace-changed',
             () => this._scheduleUpdate());
         this._connectTo(Main.overview, 'showing',
-            () => this._scheduleUpdate());
-        this._connectTo(Main.overview, 'hiding',
-            () => this._scheduleUpdate());
+            () => this._applyThemeColor());
+        this._connectTo(Main.overview, 'hiding', () => {
+            this._overviewClosing = true;
+            this._applyThemeColor();
+        });
+        this._connectTo(Main.overview, 'hidden', () => {
+            this._overviewClosing = false;
+            this._settling = true;
+            if (this._settleId)
+                GLib.source_remove(this._settleId);
+            this._settleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+                this._settleId = 0;
+                this._settling = false;
+                this._updatePanel();
+                return GLib.SOURCE_REMOVE;
+            });
+        });
 
         for (const a of global.get_window_actors())
             this._trackWindow(a.meta_window);
@@ -127,9 +148,9 @@ export default class AdaptivePanelExtension extends Extension {
             return;
         const ids = [
             window.connect('notify::maximized-horizontally',
-                () => this._scheduleUpdate()),
+                () => this._scheduleUpdateWithFollowUp()),
             window.connect('notify::maximized-vertically',
-                () => this._scheduleUpdate()),
+                () => this._scheduleUpdateWithFollowUp()),
             window.connect('size-changed',
                 () => this._scheduleUpdate()),
             window.connect('unmanaging', () => {
@@ -151,14 +172,32 @@ export default class AdaptivePanelExtension extends Extension {
     _onFocusChanged() {
         const w = global.display.focus_window;
         if (w) this._trackWindow(w);
-        this._scheduleUpdate();
+        this._scheduleUpdateWithFollowUp();
     }
 
-    _scheduleUpdate() {
+    _scheduleUpdate(delay = 150) {
         if (this._debounceId)
             GLib.source_remove(this._debounceId);
-        this._debounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+        this._debounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
             this._debounceId = 0;
+            this._updatePanel();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _scheduleUpdateWithFollowUp() {
+        this._scheduleUpdate();
+        if (this._followUpId)
+            GLib.source_remove(this._followUpId);
+        if (this._followUpId2)
+            GLib.source_remove(this._followUpId2);
+        this._followUpId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+            this._followUpId = 0;
+            this._updatePanel();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._followUpId2 = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => {
+            this._followUpId2 = 0;
             this._updatePanel();
             return GLib.SOURCE_REMOVE;
         });
@@ -168,12 +207,16 @@ export default class AdaptivePanelExtension extends Extension {
         const gen = ++this._generation;
 
         // Overview / lock screen → theme-based color
-        if (Main.overview.visible ||
+        if (Main.overview.visible || this._overviewClosing ||
             Main.sessionMode.currentMode === 'unlock-dialog' ||
             Main.sessionMode.currentMode === 'lock-screen') {
             this._applyThemeColor();
             return;
         }
+
+        // After overview closes, let rendering settle before picking color
+        if (this._settling)
+            return;
 
         // Maximized window on primary monitor → pick its header bar color
         const maxWin = this._findMaximizedWindow();
@@ -185,14 +228,15 @@ export default class AdaptivePanelExtension extends Extension {
 
     _findMaximizedWindow() {
         const pri = Main.layoutManager.primaryIndex;
-        return global.get_window_actors()
-            .map(a => a.meta_window)
-            .filter(w =>
-                w.get_monitor() === pri &&
-                !w.minimized &&
-                w.window_type === Meta.WindowType.NORMAL &&
-                w.maximized_horizontally && w.maximized_vertically)
-            .at(-1) ?? null;
+        const ws = global.workspace_manager.get_active_workspace();
+        const windows = ws.list_windows().filter(w =>
+            w.get_monitor() === pri &&
+            !w.minimized &&
+            w.window_type === Meta.WindowType.NORMAL &&
+            w.maximized_horizontally && w.maximized_vertically
+        );
+        if (windows.length === 0) return null;
+        return global.display.sort_windows_by_stacking(windows).at(-1);
     }
 
     async _pickAndApply(gen) {
@@ -282,6 +326,18 @@ export default class AdaptivePanelExtension extends Extension {
         if (this._debounceId) {
             GLib.source_remove(this._debounceId);
             this._debounceId = 0;
+        }
+        if (this._followUpId) {
+            GLib.source_remove(this._followUpId);
+            this._followUpId = 0;
+        }
+        if (this._followUpId2) {
+            GLib.source_remove(this._followUpId2);
+            this._followUpId2 = 0;
+        }
+        if (this._settleId) {
+            GLib.source_remove(this._settleId);
+            this._settleId = 0;
         }
 
         this._resetStyle();
