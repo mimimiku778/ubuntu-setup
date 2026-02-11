@@ -50,9 +50,11 @@ build() {
 install_lib() {
     info "インストール中..."
 
-    # ライブラリ配置
-    sudo install -m 644 "$SCRIPT_DIR/$TARGET" "$LIB_DIR/$TARGET"
-    ok "ライブラリ → $LIB_DIR/$TARGET"
+    # ライブラリ配置 (アトミック置換: mmap中のプロセスに影響しない)
+    sudo cp "$SCRIPT_DIR/$TARGET" "$LIB_DIR/$TARGET.tmp"
+    sudo chmod 644 "$LIB_DIR/$TARGET.tmp"
+    sudo mv "$LIB_DIR/$TARGET.tmp" "$LIB_DIR/$TARGET"
+    ok "ライブラリ → $LIB_DIR/$TARGET (atomic replace)"
 
     # ld.so.preload: 古い libinput-config を除去
     if grep -q 'libinput-config' "$PRELOAD" 2>/dev/null; then

@@ -30,7 +30,11 @@ test: $(TEST_BIN)
 	@LD_PRELOAD=./$(TARGET) ./$(TEST_BIN) preload
 
 install: $(TARGET)
-	sudo install -m 644 $(TARGET) $(LIB_DIR)/$(TARGET)
+	@# Atomic replace: copy to .tmp then mv, so running processes
+	@# that have the old .so mmap'd are not disrupted.
+	sudo cp $(TARGET) $(LIB_DIR)/$(TARGET).tmp
+	sudo chmod 644 $(LIB_DIR)/$(TARGET).tmp
+	sudo mv $(LIB_DIR)/$(TARGET).tmp $(LIB_DIR)/$(TARGET)
 	@# Remove old libinput-config if present
 	@if grep -q 'libinput-config' $(PRELOAD) 2>/dev/null; then \
 		echo "Replacing libinput-config in $(PRELOAD)..."; \
