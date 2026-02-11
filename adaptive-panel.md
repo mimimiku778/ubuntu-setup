@@ -66,19 +66,20 @@ bash setup-adaptive-panel.sh --uninstall # アンインストール
 
 re-pick で色が変化していれば自動的に反映される。generation カウンタにより、途中で別の更新が割り込んだ場合は古い pick 結果を破棄する。
 
-### Overview 安定待ち (300ms)
+### Overview 遷移とキャッシュ復元
 
-Overview の閉じアニメーション完了後 (`hidden` シグナル)、300ms の **settling 期間** を設ける。
+Overview の開閉時、pick_color に頼らずキャッシュ済みの色を即時復元することでちらつきを防ぐ。
 
 ```
 showing  → テーマ色を即時適用
 hiding   → overviewClosing フラグ ON + テーマ色を維持
-hidden   → settling フラグ ON (300ms)
+hidden   → キャッシュ済みウィンドウ色があれば即時復元 (pick_color なし)
+          → settling フラグ ON (500ms)
           → settling 期間中は restacked/focus 等による pick_color をブロック
-          → 300ms 後に settling OFF → _updatePanel() で正しい色を pick
+          → 500ms 後に settling OFF → _updatePanel() で検証 pick
 ```
 
-これにより Overview 閉じ直後に restacked/focus-window シグナルが発火しても、描画が不安定なタイミングでの pick_color を防ぎ、ちらつきを回避する。
+`_lastWindowColor` に最後に pick_color で取得したウィンドウヘッダー色をキャッシュしておき、Overview 閉じ完了時にそのまま復元する。pick_color は描画安定後の検証のみに使い、目に見える色の遷移を最小化する。Overview 内でウィンドウを切り替えた場合はキャッシュが古い可能性があるが、500ms 後の検証 pick で正しい色に修正される。
 
 ### 最大化ウィンドウの検索
 

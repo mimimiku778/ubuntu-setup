@@ -98,6 +98,7 @@ export default class AdaptivePanelExtension extends Extension {
         this._generation = 0;
         this._overviewClosing = false;
         this._settling = false;
+        this._lastWindowColor = null;
 
         this._ifaceSettings = new Gio.Settings({
             schema_id: 'org.gnome.desktop.interface',
@@ -121,10 +122,18 @@ export default class AdaptivePanelExtension extends Extension {
         });
         this._connectTo(Main.overview, 'hidden', () => {
             this._overviewClosing = false;
+            // Immediately restore cached window color to avoid flicker
+            const maxWin = this._findMaximizedWindow();
+            if (maxWin && this._lastWindowColor) {
+                const {r, g, b} = this._lastWindowColor;
+                this._applyColor(r, g, b);
+            }
+            // Block premature picks from restacked/focus signals,
+            // then verify with actual pick_color after rendering settles
             this._settling = true;
             if (this._settleId)
                 GLib.source_remove(this._settleId);
-            this._settleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+            this._settleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
                 this._settleId = 0;
                 this._settling = false;
                 this._updatePanel();
@@ -264,6 +273,7 @@ export default class AdaptivePanelExtension extends Extension {
             // Use median by luminance to avoid outliers (e.g. a button)
             colors.sort((a, b) => this._lum(a) - this._lum(b));
             const {r, g, b} = colors[1];
+            this._lastWindowColor = {r, g, b};
             this._applyColor(r, g, b);
         } catch (e) {
             this._applyThemeColor();
