@@ -132,21 +132,26 @@ static void init(void)
     pthread_once(&g_init_once, do_init);
 }
 
-/* ── Non-linear transform ─────────────────────────────────── *
+/* ── Non-linear transform (Hill function) ─────────────────── *
  *
- * f(delta) = sign(d) × base_speed × cap × tanh((|d| / cap) ^ softness)
+ * f(delta) = sign(d) × base_speed × cap × x / (1 + x)
+ *   where x = (|d| / cap) ^ softness
  *
  * Properties:
- *   softness=1  → linear start (original behaviour)
- *   softness>1  → gentler initial ramp, same max speed
+ *   - At d = cap: output = 50% of max (= base_speed × cap / 2)
+ *   - softness=1 → linear start
+ *   - softness>1 → suppresses small deltas (inertial tail)
+ *   - Approaches max gradually (unlike tanh which saturates abruptly)
  *
- * Example with base_speed=0.45, cap=15, softness=1.8:
- *   delta= 2 → 0.19  (10% of raw)  — slow scroll, near-silent start
- *   delta= 5 → 0.94  (19%)         — gentle ramp
- *   delta=10 → 3.05  (31%)         — medium
- *   delta=20 → 6.12  (31%)         — fast, capped
- *   delta=50 → 6.75  (14%)         — very fast, hard cap
- *   max out  → 6.75                — absolute ceiling
+ * Example with base_speed=0.80, cap=10, softness=3.0:
+ *   delta= 1 → 0.008 (0.8%)  — inertial tail, nearly silent
+ *   delta= 2 → 0.063 (3%)    — inertial, strongly suppressed
+ *   delta= 5 → 0.89  (18%)   — slow scroll, preserved
+ *   delta=10 → 4.00  (40%)   — medium: gradual mid-range
+ *   delta=15 → 6.17  (41%)   — medium-fast, still climbing
+ *   delta=20 → 7.11  (36%)   — fast, approaching cap
+ *   delta=30 → 7.71  (26%)   — very fast
+ *   maximum  → 8.00          — absolute ceiling (= base_speed × cap)
  */
 static double transform_finger(double delta)
 {
@@ -161,7 +166,8 @@ static double transform_finger(double delta)
     if (cfg_ramp_softness != 1.0 && normalized > 0.0)
         normalized = pow(normalized, cfg_ramp_softness);
 
-    return sign * cfg_base_speed * cfg_scroll_cap * tanh(normalized);
+    /* Hill function: x/(1+x) — gradual saturation unlike tanh */
+    return sign * cfg_base_speed * cfg_scroll_cap * (normalized / (1.0 + normalized));
 }
 
 /* ── Intercepted API ──────────────────────────────────────── */
