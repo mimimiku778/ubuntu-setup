@@ -94,9 +94,9 @@ main() {
     echo ""
 
     info "非線形スクロールカーブ:"
-    echo "  遅いスクロール → 55% 感度 (精密、VSCode でも快適)"
+    echo "  遅いスクロール → 23% 感度 (精密、VSCode でも快適)"
     echo "  速いフリック   → ソフトキャップ (慣性暴走を防止)"
-    echo "  最大出力       → 8.25 (base-speed × scroll-cap)"
+    echo "  最大出力       → 4.60 (base-speed × scroll-cap)"
     echo ""
 
     check_deps

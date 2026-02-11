@@ -31,21 +31,22 @@ const char *libscroll_speed_version(void) { return "1.0.0"; }
 /* ── Configuration defaults ───────────────────────────────── */
 
 /* Base sensitivity for slow/precise scrolling (0.0–1.0+).
- * macOS feels like ~0.5–0.6 for trackpad finger scrolling. */
-static double cfg_base_speed = 0.57;
+ * Determines gain at low speeds; gain decreases monotonically
+ * with speed when ramp_softness = 1.0 (no acceleration feel). */
+static double cfg_base_speed = 0.23;
 
 /* Soft speed cap (in scroll-value units).
  * At d = cap the output is 50% of max.
  * Effective max output ≈ base_speed × scroll_cap.         */
-static double cfg_scroll_cap = 14.0;
+static double cfg_scroll_cap = 20.0;
 
 /* Linear factor for discrete mouse wheel (1.0 = unchanged). */
 static double cfg_discrete_factor = 1.0;
 
-/* Ramp softness exponent (1.0 = linear start, >1 = gentler curve).
- * Controls the main Hill curve steepness.  Lower values give a more
- * gradual mid-range; high values compress the transition band.      */
-static double cfg_ramp_softness = 2.0;
+/* Ramp softness exponent (1.0 = linear Hill, >1 = gentler curve).
+ * At 1.0, gain decreases monotonically — no acceleration feel,
+ * touchscreen-like direct tracking.  >1 flattens the low end.      */
+static double cfg_ramp_softness = 1.0;
 
 /* Low-cut threshold (delta units, 0 = disabled).
  * When > 0, deltas below this are suppressed by a steep (n=4) Hill
@@ -148,15 +149,15 @@ static void init(void)
  *   lowcut(d) = d⁴ / (t⁴ + d⁴)   [only when low-cut > 0]
  *   max = base_speed × cap
  *
- * Example with base_speed=0.57, cap=14, softness=2.0:
- *   delta= 1 → 0.041 (0.5%)  — precise scroll, responsive
- *   delta= 2 → 0.160 (2%)    — slow scroll
- *   delta= 5 → 0.903 (11%)   — slow-medium
- *   delta=10 → 2.70  (34%)   — medium, gradual
- *   delta=15 → 4.24  (53%)   — medium-fast
- *   delta=20 → 5.35  (67%)   — fast
- *   delta=30 → 6.56  (82%)   — very fast
- *   maximum  → 7.98          — ceiling (= base_speed × cap)
+ * Example with base_speed=0.23, cap=20, softness=1.0:
+ *   delta= 1 → 0.219 (4.8%)  — precise scroll, noticeably moves
+ *   delta= 2 → 0.418 (9.1%)  — slow scroll
+ *   delta= 5 → 0.920 (20%)   — medium, near-linear tracking
+ *   delta=10 → 1.533 (33%)   — medium, gentle deceleration
+ *   delta=15 → 1.971 (43%)   — medium-fast
+ *   delta=20 → 2.300 (50%)   — fast
+ *   delta=30 → 2.760 (60%)   — very fast
+ *   maximum  → 4.60          — ceiling (= base_speed × cap)
  */
 static double transform_finger(double delta)
 {
