@@ -16,7 +16,7 @@
 #      - F12 Bookmarks (KEY_BOOKMARKS) → F17
 #   3. 以下のキーリマッピングを設定:
 #      - 左 Alt → 単独押しで無変換 (Muhenkan) / 他キーとの組み合わせで Alt / 300ms 長押しで Alt
-#      - 右 Alt → 変換 (Henkan)
+#      - 右 Alt → 短押しで変換 (Henkan) / 300ms 長押しでフォーカス再サイクル (強制ひらがな復帰)
 #      - CapsLock → F18
 #      - Shift + CapsLock → CapsLock
 #      - Copilot ボタン (F23) → Alt
@@ -123,6 +123,24 @@ if [[ -f "$KEYD_CONF" ]]; then
     info "既存設定をバックアップ: $backup"
 fi
 
+# ─── フォーカス再サイクルスクリプト作成 ─────────────────────
+# 右 Alt 長押し時に keyd command() から呼ばれる。
+# Activities を一瞬開閉してフォーカスを再サイクルし、
+# fcitx5-mozc の直接入力モード問題を解消する。
+REFOCUS_SCRIPT="/usr/local/bin/keyd-refocus"
+info "フォーカス再サイクルスクリプトを作成中..."
+
+cat > "$REFOCUS_SCRIPT" << 'REFOCUS_EOF'
+#!/bin/bash
+# Activities を一瞬開閉してフォーカスを再サイクルする
+# keyd command() から呼ばれる (root 権限)
+KEYD_BIN=$(command -v keyd.rvaiya || command -v keyd)
+"$KEYD_BIN" do 'leftmeta 250ms escape'
+REFOCUS_EOF
+
+chmod +x "$REFOCUS_SCRIPT"
+ok "フォーカス再サイクルスクリプト作成: $REFOCUS_SCRIPT"
+
 # ─── keyd 設定ファイル作成 ────────────────────────────────
 info "keyd 設定ファイルを作成中..."
 
@@ -131,7 +149,7 @@ cat > "$KEYD_CONF" << 'EOF'
 # ThinkPad X1 Carbon Gen 13 キーリマッピング
 #
 # - 左 Alt     → 単独押しで無変換 (Muhenkan) / 他キーと組み合わせで Alt / 300ms 長押しで Alt
-# - 右 Alt     → 変換 (Henkan)
+# - 右 Alt     → 短押しで変換 (Henkan) / 300ms 長押しでフォーカス再サイクル (強制ひらがな復帰)
 # - CapsLock   → F18
 # - Shift + CapsLock → CapsLock
 # - Copilot    → Alt 修飾キー
@@ -153,8 +171,8 @@ overload_tap_timeout = 300
 # 制約: タップ時に Alt キーコードが短時間漏れる (実害はほぼない)。
 leftalt = overload(alt, muhenkan)
 
-# 右 Alt → 変換
-rightalt = henkan
+# 右 Alt → 短押し: 変換 / 300ms 長押し: Activities 開閉でフォーカス再サイクル
+rightalt = timeout(henkan, 300, command(/usr/local/bin/keyd-refocus))
 
 # CapsLock → F18
 capslock = f18
@@ -186,7 +204,7 @@ fi
 info "設定を検証中..."
 
 if [[ -f "$KEYD_CONF" ]] && grep -q "leftalt = overload(alt, muhenkan)" "$KEYD_CONF" \
-    && grep -q "rightalt = henkan" "$KEYD_CONF" \
+    && grep -q "rightalt = timeout(henkan, 300, command(/usr/local/bin/keyd-refocus))" "$KEYD_CONF" \
     && grep -q "capslock = f18" "$KEYD_CONF" \
     && grep -q "leftmeta+leftshift+f23 = leftalt" "$KEYD_CONF"; then
     ok "設定ファイルの内容が正しいことを確認"
@@ -202,7 +220,7 @@ info "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 info "リマッピング内容:"
 info "  - 左 Alt     → 単独押しで無変換 / 他キーと組み合わせで Alt / 300ms 長押しで Alt"
-info "  - 右 Alt     → 変換 (Henkan)"
+info "  - 右 Alt     → 短押しで変換 / 300ms 長押しでフォーカス再サイクル (強制ひらがな復帰)"
 info "  - CapsLock   → F18"
 info "  - Shift+CapsLock → CapsLock"
 info "  - Copilot    → Alt"

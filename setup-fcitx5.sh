@@ -13,7 +13,7 @@
 #   2. im-config で fcitx5 をデフォルト入力メソッドに設定
 #   3. 物理キーボードレイアウトを検出して fcitx5 プロファイルを設定
 #   4. Fcitx5 ホットキー設定:
-#      - ActivateKeys / DeactivateKeys を無効化
+#      - ActivateKeys / DeactivateKeys / AltTriggerKeys を無効化
 #      - ShareInputState を All に設定 (全ウィンドウで IME 状態を共有)
 #   5. Mozc キーマップ設定:
 #      - MS-IME ベース
@@ -148,8 +148,10 @@ EnumerateGroupForwardKeys=
 EnumerateGroupBackwardKeys=
 ModifierOnlyKeyTimeout=250
 
+# AltTriggerKeys を無効化
+# Shift+Shift_L がデフォルトだと Ctrl+Shift+T 等の操作で
+# 誤発火して Mozc が直接入力モードに陥る原因になる
 [Hotkey/AltTriggerKeys]
-0=Shift+Shift_L
 
 # ActivateKeys / DeactivateKeys は無効化
 # GNOME カスタムショートカット経由で fcitx5-remote を使用
@@ -477,13 +479,33 @@ BASE_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
 
 activate_path="${BASE_PATH}/ime-activate/"
 deactivate_path="${BASE_PATH}/ime-deactivate/"
+force_hiragana_path="${BASE_PATH}/ime-force-hiragana/"
+
+# 強制ひらがな復帰スクリプト作成
+# 変換キー長押し時 (keyd で Katakana に割当) に使用
+FORCE_HIRAGANA_SCRIPT="$HOME/.local/bin/fcitx5-force-hiragana"
+mkdir -p "$HOME/.local/bin"
+
+cat > "$FORCE_HIRAGANA_SCRIPT" << 'SCRIPT_EOF'
+#!/bin/bash
+# Mozc を強制的に全角かなモードで再起動する。
+# mozc_server を再起動し InitialMode=Hiragana の新セッションを作る。
+# 新しいターミナルタブ等で直接入力モードに陥った場合の復帰用。
+fcitx5-remote -c
+pkill -x mozc_server 2>/dev/null || true
+sleep 0.15
+fcitx5-remote -o
+SCRIPT_EOF
+
+chmod +x "$FORCE_HIRAGANA_SCRIPT"
+ok "強制ひらがな復帰スクリプト作成: $FORCE_HIRAGANA_SCRIPT"
 
 # 既存のカスタムキーバインディングを取得
 existing=$(gsettings get "$SCHEMA" custom-keybindings)
 
 # 新しいリストを構築 (既存のバインディングを保持しつつ追加)
 new_list="$existing"
-for path in "$activate_path" "$deactivate_path"; do
+for path in "$activate_path" "$deactivate_path" "$force_hiragana_path"; do
     if ! echo "$new_list" | grep -qF "$path"; then
         if [[ "$new_list" == "@as []" ]] || [[ "$new_list" == "[]" ]]; then
             new_list="['${path}']"
@@ -506,6 +528,12 @@ gsettings set "$CUSTOM_SCHEMA:$deactivate_path" name 'IME オフ (無変換)'
 gsettings set "$CUSTOM_SCHEMA:$deactivate_path" command 'fcitx5-remote -c'
 gsettings set "$CUSTOM_SCHEMA:$deactivate_path" binding 'Muhenkan'
 ok "無変換 (Muhenkan) → IME オフ"
+
+# Katakana キー → 強制ひらがな復帰 (変換キー長押し時に keyd から送出)
+gsettings set "$CUSTOM_SCHEMA:$force_hiragana_path" name 'IME 強制ひらがな (Katakana)'
+gsettings set "$CUSTOM_SCHEMA:$force_hiragana_path" command "$FORCE_HIRAGANA_SCRIPT"
+gsettings set "$CUSTOM_SCHEMA:$force_hiragana_path" binding 'Katakana'
+ok "Katakana → 強制ひらがな復帰"
 
 # ─── 7. Fcitx5 再起動 ────────────────────────────────────
 if $FCITX5_WAS_RUNNING || fcitx5-remote --check &>/dev/null; then
@@ -537,7 +565,7 @@ info "  - Henkan / Muhenkan エントリ削除済み"
 info "  - 入力モードは常にひらがな"
 info ""
 info "Fcitx5 設定:"
-info "  - ActivateKeys / DeactivateKeys 無効化"
+info "  - ActivateKeys / DeactivateKeys / AltTriggerKeys 無効化"
 info "  - 全ウィンドウで IME 状態を共有 (ShareInputState=All)"
 echo ""
 if [[ "$current_im" != "fcitx5" ]]; then
