@@ -43,7 +43,7 @@ if [[ -z "$body" ]]; then
   body="入力を待っています"
 fi
 
-notify-send -i utilities-terminal "Claude Code" "$body" 2>/dev/null
+notify-send --app-name="Claude Code" -i utilities-terminal "Claude Code" "$body" 2>/dev/null
 
 # 通知音を再生 (非同期)
 SOUND="$HOME/.claude/notify-sound.oga"
