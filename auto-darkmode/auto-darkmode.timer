@@ -2,8 +2,7 @@
 Description=Auto dark/light mode switch timer
 
 [Timer]
-OnBootSec=30
-OnUnitActiveSec=5min
+OnCalendar=*:0/5
 Persistent=true
 
 [Install]
