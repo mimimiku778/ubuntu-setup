@@ -102,7 +102,8 @@ gsettings set org.gnome.shell.extensions.dash-to-dock autohide true
 gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true
 gsettings set org.gnome.shell.extensions.dash-to-dock extend-height false
 gsettings set org.gnome.shell.extensions.dash-to-dock isolate-workspaces true
-gsettings set org.gnome.shell.extensions.dash-to-dock click-action "'focus-minimize-or-previews'"
+gsettings set org.gnome.shell.extensions.dash-to-dock click-action "'minimize-or-previews'"
+gsettings set org.gnome.shell.extensions.dash-to-dock middle-click-action "'quit'"
 gsettings set org.gnome.shell.extensions.dash-to-dock dash-max-icon-size 52
 gsettings set org.gnome.shell.extensions.dash-to-dock show-trash false
 gsettings set org.gnome.shell.extensions.dash-to-dock show-mounts false
@@ -121,9 +122,25 @@ if [ -f "$PREVIEW_JS" ]; then
 N
 s|        Main.activateWindow(this._window);\n        this._getTopMenu().close();|        if (this._window.has_focus()) {\n            this._window.minimize();\n        } else {\n            Main.activateWindow(this._window);\n        }|
 }' "$PREVIEW_JS"
-        echo "[OK] Dock サムネイルプレビューをパッチ適用"
+        echo "[OK] Dock サムネイルプレビューをパッチ適用 (左クリックでフォーカス/最小化トグル)"
     else
-        echo "[SKIP] Dock サムネイルプレビューは既にパッチ済み"
+        echo "[SKIP] Dock サムネイルプレビューは既にパッチ済み (左クリック)"
+    fi
+
+    # 中クリックでウィンドウを閉じる: activate() メソッドにイベントチェックを追加
+    # GNOME 49+ では PopupBaseMenuItem が ClickGesture でボタンイベントを消費するため、
+    # button-release-event シグナルではなく activate() 内で処理する必要がある
+    if ! grep -q 'activate(event)' "$PREVIEW_JS"; then
+        sudo sed -i '/    activate() {/{
+s/activate() {/activate(event) {/
+a\        if (event?.get_button?.() === 2) {\
+            this._closeWindow();\
+            return;\
+        }
+}' "$PREVIEW_JS"
+        echo "[OK] Dock サムネイルプレビューをパッチ適用 (中クリックでウィンドウを閉じる)"
+    else
+        echo "[SKIP] Dock サムネイルプレビューは既にパッチ済み (中クリック)"
     fi
 fi
 
