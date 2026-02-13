@@ -34,6 +34,10 @@ if [[ -n "$transcript" && -f "$transcript" ]]; then
      | select(length > 0)
     ] | last
   ' "$transcript" 2>/dev/null \
+    | sed 's/\*\*\([^*]*\)\*\*/\1/g; s/\*\([^*]*\)\*/\1/g' \
+    | sed 's/`[^`]*`//g; s/^#{1,6} //g' \
+    | sed 's/\[([^]]*)\]([^)]*)/\1/g' \
+    | sed 's/^[[:space:]]*[-*+] //g; s/^[[:space:]]*[0-9]\+\. //g' \
     | tr '\n' ' ' \
     | sed 's/  */ /g' \
     | cut -c1-200)
@@ -43,7 +47,7 @@ if [[ -z "$body" ]]; then
   body="入力を待っています"
 fi
 
-notify-send --app-name="Claude Code" -i utilities-terminal "Claude Code" "$body" 2>/dev/null
+notify-send --app-name="Claude Code" -i utilities-terminal "$body" 2>/dev/null
 
 # 通知音を再生 (非同期)
 SOUND="$HOME/.claude/notify-sound.oga"
