@@ -93,23 +93,6 @@ export default class TilingThirdsExtension extends Extension {
             () => this._restoreWindow(),
         );
 
-        // Restore original size when user starts dragging a tiled window
-        this._grabBeginId = global.display.connect('grab-op-begin', (display, window, op) => {
-            if (op !== Meta.GrabOp.MOVING || !window?._tilingThirdsRect)
-                return;
-
-            const r = window._tilingThirdsRect;
-            const rect = window.get_frame_rect();
-
-            // Calculate pointer position ratio within the tiled window
-            const [pointerX] = global.get_pointer();
-            const ratioX = (pointerX - rect.x) / rect.width;
-
-            // Restore original size, keeping pointer at the same relative position
-            const newX = Math.round(pointerX - r.width * ratioX);
-            window.move_resize_frame(true, newX, r.y, r.width, r.height);
-            delete window._tilingThirdsRect;
-        });
     }
 
     _tileWindow(name) {
