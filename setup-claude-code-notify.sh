@@ -23,31 +23,41 @@ cat > "$HOOK_SCRIPT" << 'HOOK'
 input=$(cat)
 transcript=$(echo "$input" | jq -r '.transcript_path // empty')
 
-# Stop hook は transcript 最終書き込み前に発火するため待つ
-sleep 1
-
+# Stop hook は transcript 最終書き込み前に発火するためリトライで待つ
 body=""
 if [[ -n "$transcript" && -f "$transcript" ]]; then
-  body=$(jq -rs '
-    [.[] | select(.type == "assistant")
-     | .message.content // [] | map(select(.type == "text") | .text) | join(" ")
-     | select(length > 0)
-    ] | last
-  ' "$transcript" 2>/dev/null \
-    | sed 's/\*\*\([^*]*\)\*\*/\1/g; s/\*\([^*]*\)\*/\1/g' \
-    | sed 's/`[^`]*`//g; s/^#{1,6} //g' \
-    | sed 's/\[([^]]*)\]([^)]*)/\1/g' \
-    | sed 's/^[[:space:]]*[-*+] //g; s/^[[:space:]]*[0-9]\+\. //g' \
-    | tr '\n' ' ' \
-    | sed 's/  */ /g' \
-    | cut -c1-200)
+  for i in 1 2 3 4 5; do
+    sleep 1
+    body=$(jq -rs '
+      [.[] | select(.type == "assistant")
+       | .message.content // [] | map(select(.type == "text") | .text) | join(" ")
+       | select(length > 0)
+      ] | last
+    ' "$transcript" 2>/dev/null \
+      | tr '\n' ' ' \
+      | sed -E 's/```[^`]*```//g' \
+      | sed -E 's/`([^`]+)`/\1/g' \
+      | sed -E 's/\*\*([^*]+)\*\*/\1/g; s/\*([^*]+)\*/\1/g' \
+      | sed -E 's/(^| )#{1,6} /\1/g' \
+      | sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' \
+      | sed -E 's/~~([^~]+)~~/\1/g' \
+      | sed -E 's/  +/ /g; s/^ //; s/ $//' \
+      | cut -c1-200)
+    [[ -n "$body" ]] && break
+  done
 fi
 
 if [[ -z "$body" ]]; then
   body="入力を待っています"
 fi
 
-notify-send --app-name="Claude Code" -i utilities-terminal "$body" 2>/dev/null
+summary=$(echo "$body" | cut -c1-50)
+rest=$(echo "$body" | cut -c51-)
+if [[ -n "$rest" ]]; then
+  notify-send --app-name="Claude Code" -i utilities-terminal "${summary}" "$rest" 2>/dev/null
+else
+  notify-send --app-name="Claude Code" -i utilities-terminal "$summary" 2>/dev/null
+fi
 
 # 通知音を再生 (非同期)
 SOUND="$HOME/.claude/notify-sound.oga"

@@ -114,12 +114,24 @@ NEEDS_RELOAD=false
 for UNIT in auto-darkmode.service auto-darkmode.timer; do
     SRC="${DARKMODE_DIR}/${UNIT}"
     DST="${SYSTEMD_USER_DIR}/${UNIT}"
-    if [ -f "$DST" ] && diff -q "$SRC" "$DST" &>/dev/null; then
-        echo "[SKIP] ${UNIT} は最新"
+    # .service はテンプレートのプレースホルダーを実際のパスに置換
+    if [[ "$UNIT" == *.service ]]; then
+        GENERATED=$(sed "s|@@DARKMODE_DIR@@|${DARKMODE_DIR}|g" "$SRC")
+        if [ -f "$DST" ] && [ "$GENERATED" = "$(cat "$DST")" ]; then
+            echo "[SKIP] ${UNIT} は最新"
+        else
+            echo "$GENERATED" > "$DST"
+            echo "[OK] ${UNIT} をインストール"
+            NEEDS_RELOAD=true
+        fi
     else
-        cp "$SRC" "$DST"
-        echo "[OK] ${UNIT} をインストール"
-        NEEDS_RELOAD=true
+        if [ -f "$DST" ] && diff -q "$SRC" "$DST" &>/dev/null; then
+            echo "[SKIP] ${UNIT} は最新"
+        else
+            cp "$SRC" "$DST"
+            echo "[OK] ${UNIT} をインストール"
+            NEEDS_RELOAD=true
+        fi
     fi
 done
 
