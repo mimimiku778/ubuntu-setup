@@ -1,0 +1,10 @@
+[Unit]
+Description=GPU Power Cap を Silent相当 (135W) に制限 (RX 5600 XT)
+After=sys-class-drm.device
+
+[Service]
+Type=oneshot
+ExecStart=@@SCRIPT_PATH@@/gpu-power-limit.sh on
+
+[Install]
+WantedBy=multi-user.target

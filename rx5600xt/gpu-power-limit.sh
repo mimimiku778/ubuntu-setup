@@ -15,7 +15,7 @@
 #
 # Note:
 #   - 再起動するとデフォルトに戻る
-#   - 永続化したい場合は systemd service 等で起動時に実行する
+#   - 永続化: sudo bash setup-gpu-power-limit.sh を実行
 
 set -euo pipefail
 
