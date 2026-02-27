@@ -21,38 +21,52 @@ cat > "$HOOK_SCRIPT" << 'HOOK'
 # Claude Code Stop hook - 応答完了時にGNOME通知+サウンドを送る
 
 input=$(cat)
-transcript=$(echo "$input" | jq -r '.transcript_path // empty')
+transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty')
 
 # Stop hook は transcript 最終書き込み前に発火するためリトライで待つ
 body=""
 if [[ -n "$transcript" && -f "$transcript" ]]; then
   for i in 1 2 3 4 5; do
     sleep 1
-    body=$(jq -rs '
-      [.[] | select(.type == "assistant")
-       | .message.content // [] | map(select(.type == "text") | .text) | join(" ")
-       | select(length > 0)
-      ] | last
-    ' "$transcript" 2>/dev/null \
-      | tr '\n' ' ' \
-      | sed -E 's/```[^`]*```//g' \
-      | sed -E 's/`([^`]+)`/\1/g' \
-      | sed -E 's/\*\*([^*]+)\*\*/\1/g; s/\*([^*]+)\*/\1/g' \
-      | sed -E 's/(^| )#{1,6} /\1/g' \
-      | sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' \
-      | sed -E 's/~~([^~]+)~~/\1/g' \
-      | sed -E 's/  +/ /g; s/^ //; s/ $//' \
-      | cut -c1-200)
+    # tac で末尾から1行ずつ読み、最後のアシスタントテキストを探す
+    # jq -s はヌルバイト等でファイル全体のパースが壊れるため行単位で処理
+    body=$(tac "$transcript" 2>/dev/null | while IFS= read -r line; do
+      text=$(printf '%s' "$line" \
+        | tr -d '\0' \
+        | jq -r '
+            select(.type == "assistant")
+            | .message.content // [] | map(select(.type == "text") | .text) | join(" ")
+            | select(length > 0)
+          ' 2>/dev/null)
+      if [[ -n "$text" ]]; then
+        printf '%s' "$text"
+        break
+      fi
+    done)
     [[ -n "$body" ]] && break
   done
+fi
+
+# Markdown記法を除去して通知用テキストに整形
+if [[ -n "$body" ]]; then
+  body=$(printf '%s' "$body" \
+    | tr '\n' ' ' \
+    | sed -E 's/```[^`]*```//g' \
+    | sed -E 's/`([^`]+)`/\1/g' \
+    | sed -E 's/\*\*([^*]+)\*\*/\1/g; s/\*([^*]+)\*/\1/g' \
+    | sed -E 's/(^| )#{1,6} /\1/g' \
+    | sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' \
+    | sed -E 's/~~([^~]+)~~/\1/g' \
+    | sed -E 's/  +/ /g; s/^ //; s/ $//' \
+    | cut -c1-200)
 fi
 
 if [[ -z "$body" ]]; then
   body="入力を待っています"
 fi
 
-summary=$(echo "$body" | cut -c1-50)
-rest=$(echo "$body" | cut -c51-)
+summary=$(echo "$body" | cut -c1-60)
+rest=$(echo "$body" | cut -c61-)
 if [[ -n "$rest" ]]; then
   notify-send --app-name="Claude Code" -i utilities-terminal "${summary}" "$rest" 2>/dev/null
 else
