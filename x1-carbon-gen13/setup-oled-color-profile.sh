@@ -1,46 +1,42 @@
 #!/bin/bash
 # setup-oled-color-profile.sh
 #
-# Samsung ATNA40HQ02-0 OLED パネル (100% DCI-P3) に sRGB クランプ用
-# ICC カラープロファイルをインストールし、colord で適用する。
+# Samsung ATNA40YK20-0 / ATNA40HQ02-0 OLED パネル (100% DCI-P3) に
+# X-Rite i1Pro 3 キャリブレーション済み ICC プロファイルを適用する。
 #
-# VCGT (Video Card Gamma Table) 付きプロファイルを gnome-settings-daemon が
-# 読み取り、ディスプレイのガンマランプに適用することで、DCI-P3 の広色域を
-# sRGB 相当に補正する。
+# プロファイル元: NotebookCheck (ThinkPad X1 Carbon Gen 13 レビュー)
+# VCGT (Video Card Gamma Table) 付きで gnome-settings-daemon がガンマランプに
+# 適用し、全アプリの表示を sRGB 相当に補正する。
 #
 # Usage:
 #   bash setup-oled-color-profile.sh
 #
 # Requirements:
 #   - sudo 権限
-#   - python3
 #   - GNOME + colord (gnome-settings-daemon が VCGT を適用)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ICC_NAME="samsung-oled-srgb-clamped.icc"
+ICC_NAME="ATNA40YK20_0.icm"
 ICC_SRC="$SCRIPT_DIR/$ICC_NAME"
 ICC_DEST="/usr/share/color/icc/colord/$ICC_NAME"
 DEVICE_ID="xrandr-Samsung Display Corp.-ATNA40HQ02-0 -0x00000000"
 
-# --- 1. ICC プロファイルを生成 ---
-echo "[INFO] ICC プロファイルを生成中..."
-python3 "$SCRIPT_DIR/generate-oled-srgb-profile.py" "$ICC_SRC"
+# --- 1. システムにインストール ---
+if [ ! -f "$ICC_SRC" ]; then
+    echo "[ERROR] プロファイルが見つかりません: $ICC_SRC"
+    exit 1
+fi
 
-# --- 2. システムにインストール ---
-echo ""
 echo "[INFO] ICC プロファイルをインストール中..."
 sudo cp "$ICC_SRC" "$ICC_DEST"
 echo "[OK] $ICC_DEST にインストール"
 
-# 生成した一時ファイルを削除
-rm -f "$ICC_SRC"
-
 # colord がファイルを認識するまで少し待つ
 sleep 1
 
-# --- 3. colord でデバイスに割り当て ---
+# --- 2. colord でデバイスに割り当て ---
 echo ""
 echo "[INFO] colord でプロファイルを適用中..."
 
@@ -66,4 +62,4 @@ echo "[OK] プロファイルを適用: $(LANG=C colormgr device-get-default-pro
 # --- 完了 ---
 echo ""
 echo "[OK] OLED カラープロファイルのセットアップが完了しました"
-echo "     DCI-P3 → sRGB のガンマ補正が有効になります"
+echo "     X-Rite i1Pro 3 キャリブレーション済み VCGT が有効になります"
