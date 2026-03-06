@@ -14,6 +14,8 @@
 # 適用される設定:
 #   - NMI watchdog 無効化 (深い C-state 遷移を阻害する割り込みを停止)
 #   - snd_hda_intel power_save を明示的に 1 秒に設定
+#   - PCI デバイスの runtime PM を auto に設定 (s2idle 時の省電力に必須)
+#   - PCIe ASPM ポリシーを powersupersave に設定
 #
 # 前提:
 #   - power-profiles-daemon が active であること (TLP と併用不可)
@@ -23,6 +25,7 @@ set -euo pipefail
 
 SYSCTL_CONF="/etc/sysctl.d/90-x1-power.conf"
 MODPROBE_CONF="/etc/modprobe.d/x1-power-audio.conf"
+UDEV_CONF="/etc/udev/rules.d/90-x1-pci-pm.rules"
 
 # ─── 色付きログ ───────────────────────────────────────────
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
@@ -79,17 +82,41 @@ show_status() {
     show_value "snd_hda_intel.power_save" "$audio" "1" "0"
 
     echo ""
+    info "=== PCI runtime PM ==="
+    local pci_on=0 pci_auto=0
+    for d in /sys/bus/pci/devices/*/power/control; do
+        local ctrl
+        ctrl=$(cat "$d" 2>/dev/null)
+        if [[ "$ctrl" == "on" ]]; then
+            pci_on=$((pci_on + 1))
+        else
+            pci_auto=$((pci_auto + 1))
+        fi
+    done
+    if [[ $pci_on -eq 0 ]]; then
+        ok "全 PCI デバイス runtime PM: auto ($pci_auto デバイス)"
+    else
+        warn "PCI runtime PM: $pci_on デバイスが on (常時稼働), $pci_auto デバイスが auto"
+    fi
+
+    local aspm
+    aspm=$(cat /sys/module/pcie_aspm/parameters/policy 2>/dev/null || echo "?")
+    if echo "$aspm" | grep -q '\[powersupersave\]'; then
+        ok "PCIe ASPM: powersupersave"
+    else
+        warn "PCIe ASPM: $aspm (powersupersave 推奨)"
+    fi
+
+    echo ""
     info "=== 設定ファイル ==="
-    if [[ -f "$SYSCTL_CONF" ]]; then
-        ok "$SYSCTL_CONF (存在)"
-    else
-        warn "$SYSCTL_CONF (なし)"
-    fi
-    if [[ -f "$MODPROBE_CONF" ]]; then
-        ok "$MODPROBE_CONF (存在)"
-    else
-        warn "$MODPROBE_CONF (なし)"
-    fi
+    local files=("$SYSCTL_CONF" "$MODPROBE_CONF" "$UDEV_CONF")
+    for f in "${files[@]}"; do
+        if [[ -f "$f" ]]; then
+            ok "$f (存在)"
+        else
+            warn "$f (なし)"
+        fi
+    done
 
     echo ""
     info "=== 電力モニタリング ==="
@@ -165,6 +192,35 @@ MODPROBE
         ok "Audio power save を即時反映"
     fi
 
+    # ── PCI runtime PM (即時適用) ──
+    info "PCI デバイスの runtime PM を auto に設定中..."
+    local pci_count=0
+    for d in /sys/bus/pci/devices/*/power/control; do
+        if [[ -w "$d" ]]; then
+            echo auto > "$d" 2>/dev/null && pci_count=$((pci_count + 1))
+        fi
+    done
+    ok "PCI runtime PM: ${pci_count} デバイスを auto に設定"
+
+    # ── PCI runtime PM (永続化: udev ルール) ──
+    info "udev ルールを書き込み: $UDEV_CONF"
+    cat > "$UDEV_CONF" <<'UDEV'
+# X1 Carbon Gen 13 PCI runtime PM 省電力設定
+# setup-power-saving.sh で生成
+
+# 全 PCI デバイスの runtime PM を auto に設定
+ACTION=="add", SUBSYSTEM=="pci", ATTR{power/control}="auto"
+UDEV
+    ok "udev ルール作成 (次回起動から永続適用)"
+
+    # ── PCIe ASPM ──
+    if [[ -w /sys/module/pcie_aspm/parameters/policy ]]; then
+        echo powersupersave > /sys/module/pcie_aspm/parameters/policy 2>/dev/null
+        ok "PCIe ASPM ポリシー: powersupersave"
+    else
+        warn "PCIe ASPM ポリシーを変更できません"
+    fi
+
     # ── 診断ツール ──
     echo ""
     if ! command -v powertop &>/dev/null; then
@@ -207,13 +263,27 @@ do_disable() {
         info "$MODPROBE_CONF は存在しません (スキップ)"
     fi
 
+    # ── udev ルール削除 ──
+    if [[ -f "$UDEV_CONF" ]]; then
+        rm "$UDEV_CONF"
+        ok "$UDEV_CONF を削除 (次回起動からデフォルトに戻る)"
+    else
+        info "$UDEV_CONF は存在しません (スキップ)"
+    fi
+
+    # ── PCIe ASPM をデフォルトに ──
+    if [[ -w /sys/module/pcie_aspm/parameters/policy ]]; then
+        echo default > /sys/module/pcie_aspm/parameters/policy 2>/dev/null
+        ok "PCIe ASPM ポリシー: default"
+    fi
+
     echo ""
     info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     ok "カーネルデフォルトに戻しました"
     info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     info "sysctl 設定は即時反映済みです"
-    info "Audio 設定は次回起動で反映されます"
+    info "Audio / udev 設定は次回起動で反映されます"
 }
 
 # ─── メイン ──────────────────────────────────────────────

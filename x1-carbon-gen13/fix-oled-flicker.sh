@@ -2,26 +2,28 @@
 # fix-oled-flicker.sh
 #
 # X1 Carbon Gen 13 OLED のちらつきを修正する。
-# GPU を制御しているドライバ（i915 または xe）を自動検出し、
-# PSR 関連パラメータをトグルする。
+#
+# debugfs 経由で PSR を無効化する。カーネルパラメータ (i915.enable_psr=0) を
+# 使う従来の方法は GPU の runtime PM を完全に無効化してしまい、s2idle 時の
+# バッテリー消費が大幅に増加する (2%/h 程度)。debugfs 経由なら runtime PM を
+# 維持したまま PSR だけ無効化できる。
 #
 # Usage:
 #   sudo bash fix-oled-flicker.sh [disable|enable|status]
 #
-#   disable  PSR 関連パラメータをすべて無効化する（デフォルト）
-#   enable   PSR 関連パラメータをすべて有効化する（元に戻す）
+#   disable  PSR を無効化してちらつきを抑える（デフォルト）
+#   enable   PSR を有効化して省電力に戻す
 #   status   現在の設定を表示する
 #
-# PSR パラメータ (ドライバに応じて i915. または xe. プレフィックス):
-#   enable_psr=0              Panel Self Refresh
-#   enable_psr2_sel_fetch=0   PSR2 Selective Fetch
-#
-# Note:
-#   PSR 無効化によりバッテリー消費が 0.5〜1.5W 程度増加する可能性があります。
+# 仕組み:
+#   - systemd サービスで起動時に debugfs の i915_edp_psr_debug を設定
+#   - GRUB のカーネルパラメータには触れない (runtime PM を壊さない)
 
 set -euo pipefail
 
 GRUB_DEFAULT="/etc/default/grub"
+SERVICE_NAME="x1-psr-disable"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 # ─── ドライバ自動検出 ─────────────────────────────────────
 detect_driver() {
@@ -37,21 +39,23 @@ detect_driver() {
 }
 
 GPU_DRIVER=$(detect_driver)
-PSR_PARAMS=("${GPU_DRIVER}.enable_psr" "${GPU_DRIVER}.enable_psr2_sel_fetch")
-# 旧ドライバのパラメータ（クリーンアップ用）
-if [[ "$GPU_DRIVER" == "i915" ]]; then
-    OLD_PARAMS=("xe.enable_psr" "xe.enable_psr2_sel_fetch")
-else
-    OLD_PARAMS=("i915.enable_psr" "i915.enable_psr2_sel_fetch")
-fi
-ALL_PSR_PARAMS=("${PSR_PARAMS[@]}" "${OLD_PARAMS[@]}")
+
+# PSR debugfs パスを検出
+find_psr_debug() {
+    for d in /sys/kernel/debug/dri/*/; do
+        if [[ -f "${d}i915_edp_psr_debug" ]]; then
+            echo "${d}i915_edp_psr_debug"
+            return
+        fi
+    done
+    echo ""
+}
 
 # ─── 色付きログ ───────────────────────────────────────────
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
 ok()    { echo -e "\033[1;32m[OK]\033[0m    $*"; }
 warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; exit 1; }
-error_noexit() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
 
 # ─── 使い方 ──────────────────────────────────────────────
 usage() {
@@ -63,9 +67,25 @@ usage() {
     exit 1
 }
 
-# ─── 現在の状態を取得 ────────────────────────────────────
-get_grub_cmdline() {
-    grep -oP 'GRUB_CMDLINE_LINUX_DEFAULT="\K[^"]*' "$GRUB_DEFAULT"
+# ─── GRUB から旧 PSR パラメータを削除 ────────────────────
+cleanup_grub_params() {
+    local cmdline
+    cmdline=$(grep -oP 'GRUB_CMDLINE_LINUX_DEFAULT="\K[^"]*' "$GRUB_DEFAULT")
+    local new_cmdline="$cmdline"
+    local params=("i915.enable_psr" "i915.enable_psr2_sel_fetch" "xe.enable_psr" "xe.enable_psr2_sel_fetch")
+    local changed=false
+    for param in "${params[@]}"; do
+        if echo "$new_cmdline" | grep -q "${param}="; then
+            new_cmdline=$(echo "$new_cmdline" | sed "s/ *${param}=[^ ]*//g")
+            changed=true
+        fi
+    done
+    if [[ "$changed" == "true" ]]; then
+        new_cmdline=$(echo "$new_cmdline" | sed 's/  */ /g; s/^ //; s/ $//')
+        sed -i "s|GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*\"|GRUB_CMDLINE_LINUX_DEFAULT=\"${new_cmdline}\"|" "$GRUB_DEFAULT"
+        update-grub 2>/dev/null
+        ok "GRUB から旧 PSR パラメータを削除 (再起動後反映)"
+    fi
 }
 
 # ─── 現在の状態を表示 ────────────────────────────────────
@@ -73,71 +93,143 @@ show_status() {
     info "検出されたドライバ: ${GPU_DRIVER}"
     echo ""
 
-    info "GRUB 設定 (/etc/default/grub):"
-    local cmdline
-    cmdline=$(get_grub_cmdline)
-    for param in "${PSR_PARAMS[@]}"; do
-        if echo "$cmdline" | grep -q "${param}=0"; then
-            warn "  ${param}=0 (無効)"
-        else
-            ok "  ${param} (デフォルト/有効)"
+    # debugfs PSR 状態
+    info "=== PSR 状態 (debugfs) ==="
+    local psr_debug
+    psr_debug=$(find_psr_debug)
+    if [[ -n "$psr_debug" ]]; then
+        local psr_status_file="${psr_debug%_debug}_status"
+        if [[ -f "$psr_status_file" ]]; then
+            local mode
+            mode=$(grep "^PSR mode:" "$psr_status_file" 2>/dev/null | awk -F: '{print $2}' | xargs)
+            if [[ "$mode" == "disabled" ]]; then
+                ok "PSR mode: disabled (ちらつき対策 ON)"
+            else
+                warn "PSR mode: $mode (ちらつきが出る可能性あり)"
+            fi
         fi
-    done
-    # 旧ドライバのパラメータが残っていたら警告
-    for param in "${OLD_PARAMS[@]}"; do
-        if echo "$cmdline" | grep -q "${param}="; then
-            error_noexit "  ${param} が残っています（ドライバは ${GPU_DRIVER} なので効果なし）"
-        fi
-    done
+        local debug_val
+        debug_val=$(cat "$psr_debug" 2>/dev/null)
+        info "i915_edp_psr_debug: $debug_val"
+    else
+        warn "PSR debugfs が見つかりません"
+    fi
 
+    # systemd サービス
     echo ""
-    info "カーネルパラメータ (/proc/cmdline):"
+    info "=== systemd サービス ==="
+    if [[ -f "$SERVICE_FILE" ]]; then
+        ok "$SERVICE_FILE (存在)"
+        if systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
+            ok "${SERVICE_NAME}: enabled"
+        else
+            warn "${SERVICE_NAME}: disabled"
+        fi
+    else
+        warn "$SERVICE_FILE (なし)"
+    fi
+
+    # GPU runtime PM
+    echo ""
+    info "=== GPU runtime PM ==="
+    local gpu_rt
+    gpu_rt=$(cat /sys/class/drm/card1/device/power/runtime_status 2>/dev/null || echo "?")
+    if [[ "$gpu_rt" == "suspended" || "$gpu_rt" == "active" ]]; then
+        ok "GPU runtime_status: $gpu_rt"
+    elif [[ "$gpu_rt" == "unsupported" ]]; then
+        warn "GPU runtime_status: unsupported (s2idle 消費が増大)"
+        warn "  GRUB に i915.enable_psr=0 が残っている可能性があります"
+    else
+        info "GPU runtime_status: $gpu_rt"
+    fi
+
+    # GRUB に旧パラメータが残っていないか確認
+    echo ""
+    info "=== GRUB カーネルパラメータ ==="
     local boot_cmdline
     boot_cmdline=$(cat /proc/cmdline)
-    for param in "${PSR_PARAMS[@]}"; do
-        if echo "$boot_cmdline" | grep -q "${param}=0"; then
-            warn "  ${param}=0 (無効・反映済み)"
-        else
-            ok "  ${param} (デフォルト/有効・反映済み)"
-        fi
-    done
+    if echo "$boot_cmdline" | grep -qE "(i915|xe)\.enable_psr="; then
+        warn "カーネルパラメータに PSR 設定が残っています (runtime PM に悪影響)"
+        warn "  $(echo "$boot_cmdline" | grep -oE "(i915|xe)\.[^ ]*psr[^ ]*")"
+    else
+        ok "カーネルパラメータに PSR 設定なし (正常)"
+    fi
+}
+
+# ─── 有効化 (PSR ON = 省電力) ────────────────────────────
+do_enable() {
+    info "PSR を有効化中..."
+    echo ""
+
+    # systemd サービス削除
+    if [[ -f "$SERVICE_FILE" ]]; then
+        systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
+        rm "$SERVICE_FILE"
+        systemctl daemon-reload
+        ok "systemd サービスを削除"
+    else
+        info "systemd サービスは存在しません (スキップ)"
+    fi
+
+    # GRUB の旧パラメータも掃除
+    cleanup_grub_params
+
+    # debugfs で即時有効化 (値 -1 で元に戻す)
+    local psr_debug
+    psr_debug=$(find_psr_debug)
+    if [[ -n "$psr_debug" ]]; then
+        echo 0xffffffff > "$psr_debug" 2>/dev/null
+        ok "PSR を即時有効化 (debugfs)"
+    fi
 
     echo ""
-    info "ドライバパラメータ (/sys/module/${GPU_DRIVER}/parameters/):"
-    for param in "${PSR_PARAMS[@]}"; do
-        local sysfs_name="${param#${GPU_DRIVER}.}"
-        local val
-        val=$(cat "/sys/module/${GPU_DRIVER}/parameters/${sysfs_name}" 2>/dev/null || echo "読み取り不可")
-        if [[ "$val" == "0" || "$val" == "N" ]]; then
-            warn "  ${sysfs_name} = ${val} (無効)"
-        else
-            ok "  ${sysfs_name} = ${val} (有効)"
-        fi
-    done
+    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    ok "PSR 有効化完了 (省電力モード)"
+    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
-# ─── GRUB からパラメータを削除（旧ドライバのパラメータも含む）───
-remove_psr_params() {
-    local cmdline
-    cmdline=$(get_grub_cmdline)
-    local new_cmdline="$cmdline"
-    for param in "${ALL_PSR_PARAMS[@]}"; do
-        new_cmdline=$(echo "$new_cmdline" | sed "s/ *${param}=[^ ]*//g")
-    done
-    # 重複スペースを除去
-    new_cmdline=$(echo "$new_cmdline" | sed 's/  */ /g; s/^ //; s/ $//')
-    sed -i "s|GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*\"|GRUB_CMDLINE_LINUX_DEFAULT=\"${new_cmdline}\"|" "$GRUB_DEFAULT"
-}
+# ─── 無効化 (PSR OFF = ちらつき対策) ─────────────────────
+do_disable() {
+    info "PSR を無効化中 (debugfs 方式)..."
+    echo ""
 
-# ─── GRUB にパラメータを追加 ─────────────────────────────
-add_psr_params() {
-    for param in "${PSR_PARAMS[@]}"; do
-        local cmdline
-        cmdline=$(get_grub_cmdline)
-        if ! echo "$cmdline" | grep -q "${param}=0"; then
-            sed -i "s|\(GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*\)|\1 ${param}=0|" "$GRUB_DEFAULT"
-        fi
-    done
+    # GRUB の旧パラメータを削除 (runtime PM を壊さないため)
+    cleanup_grub_params
+
+    # systemd サービス作成
+    info "systemd サービスを作成: $SERVICE_FILE"
+    cat > "$SERVICE_FILE" <<'SERVICE'
+[Unit]
+Description=Disable i915 PSR via debugfs (OLED flicker fix)
+After=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'for f in /sys/kernel/debug/dri/*/i915_edp_psr_debug; do [ -f "$f" ] && echo 0x1 > "$f"; done'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+    systemctl daemon-reload
+    systemctl enable "$SERVICE_NAME"
+    ok "systemd サービスを有効化 (起動時に PSR を無効化)"
+
+    # debugfs で即時無効化
+    local psr_debug
+    psr_debug=$(find_psr_debug)
+    if [[ -n "$psr_debug" ]]; then
+        echo 0x1 > "$psr_debug" 2>/dev/null
+        ok "PSR を即時無効化 (debugfs)"
+    fi
+
+    echo ""
+    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    ok "PSR 無効化完了 (ちらつき対策 ON)"
+    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    info "GPU runtime PM は維持されます (s2idle 消費に影響なし)"
+    info "元に戻す場合: sudo bash $0 enable"
 }
 
 # ─── メイン ──────────────────────────────────────────────
@@ -152,53 +244,8 @@ if [[ $EUID -ne 0 ]]; then
     error "root 権限が必要です。sudo bash $0 $ACTION で実行してください。"
 fi
 
-if [[ "$ACTION" != "disable" && "$ACTION" != "enable" ]]; then
-    usage
-fi
-
-# ─── バックアップ ─────────────────────────────────────────
-backup="${GRUB_DEFAULT}.bak.$(date +%Y%m%d%H%M%S)"
-cp "$GRUB_DEFAULT" "$backup"
-info "バックアップ作成: $backup"
-
-# ─── トグル実行 ──────────────────────────────────────────
 case "$ACTION" in
-    disable)
-        info "検出されたドライバ: ${GPU_DRIVER}"
-        info "PSR 関連パラメータを無効化中..."
-        # 既存のPSRパラメータを一度削除してからすべて追加（旧ドライバ分もクリーンアップ）
-        remove_psr_params
-        add_psr_params
-        ;;
-    enable)
-        info "検出されたドライバ: ${GPU_DRIVER}"
-        info "PSR 関連パラメータを有効化中（パラメータを削除）..."
-        remove_psr_params
-        ;;
+    disable) do_disable ;;
+    enable)  do_enable ;;
+    *)       usage ;;
 esac
-
-# ─── 結果確認 ────────────────────────────────────────────
-info "変更後の GRUB_CMDLINE_LINUX_DEFAULT:"
-info "  $(get_grub_cmdline)"
-
-# ─── update-grub ──────────────────────────────────────────
-info "update-grub を実行中..."
-update-grub
-ok "GRUB 設定を更新しました"
-
-# ─── 完了 ────────────────────────────────────────────────
-echo ""
-info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-if [[ "$ACTION" == "disable" ]]; then
-    ok "PSR 無効化完了! (ちらつき対策 ON)"
-else
-    ok "PSR 有効化完了! (省電力モード)"
-fi
-info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-info "反映するには再起動が必要です:"
-info "  sudo reboot"
-echo ""
-info "元に戻す場合:"
-info "  sudo cp $backup $GRUB_DEFAULT"
-info "  sudo update-grub && sudo reboot"
